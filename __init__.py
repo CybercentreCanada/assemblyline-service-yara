@@ -1,1 +1,1 @@
-from assemblyline.al.service.yara.yara import Yara, YaraMetadata
+from al_services.alsvc_yara.yara import Yara, YaraMetadata

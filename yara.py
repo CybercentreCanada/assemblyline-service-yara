@@ -105,7 +105,7 @@ class Yara(ServiceBase):
         "USE_RIAK_FOR_RULES": True,
         "RULE_PATH": 'rules.yar',
         "SIGNATURE_USER": 'user',
-        "SIGNATURE_PASS": 'password',
+        "SIGNATURE_PASS": 'changeme',
         "SIGNATURE_URL": 'https://localhost:443',
         "SIGNATURE_QUERY": 'meta.al_status:DEPLOYED OR meta.al_status:NOISY'
     }

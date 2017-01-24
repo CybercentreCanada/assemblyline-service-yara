@@ -20,7 +20,9 @@ Currently AL runs Yara 3.4, and therefore supports the following external module
  can be found at the following locations:
  
  Rule creation:
+ 
  * https://yara.readthedocs.io/en/v3.5.0/ 
+ 
  * https://[AL instance]/static/pdf/yara.pdf (Yara user manual Ver. 1.6)
  
  MALWARE Standard:

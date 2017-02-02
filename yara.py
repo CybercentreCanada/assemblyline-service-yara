@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 import os
+import posixpath
 import shutil
 import subprocess
 import tempfile
@@ -99,7 +100,7 @@ class Yara(ServiceBase):
                           "are reported but do not influence the score. DEPLOYED rules score according to their " \
                           "rule group (implant => 1000 | exploit & tool => 500 | technique => 100 | info => 0)."
     SERVICE_ENABLED = True
-    SERVICE_REVISION = ServiceBase.parse_revision('$Id: 00a7ae68c0123bb6322f061d7bad3ad458617d59 $')
+    SERVICE_REVISION = ServiceBase.parse_revision('$Id$')
     SERVICE_VERSION = '1'
     SERVICE_DEFAULT_CONFIG = {
         "USE_RIAK_FOR_RULES": True,
@@ -325,7 +326,13 @@ class Yara(ServiceBase):
 
             self._paranoid_rule_check(rules_file)
 
-            rules = yara.compile(rules_file)
+            rules = yara.compile(rules_file,
+                                 externals={
+                                     'asl_filename': '',
+                                     'asl_filetype': '',
+                                     'asl_protocol': '',
+                                     'asl_submitter': ''
+                                    })
             rules_md5 = md5(remainder).hexdigest()
             return last_update, rules, rules_md5
         except yara.SyntaxError as e:
@@ -390,10 +397,10 @@ class Yara(ServiceBase):
     @staticmethod
     def _paranoid_rule_check(rule_path):
         cmd = "python -c \"import yara; " \
-            "yara.compile('%s').match(data=''); print 'It worked!'\""
-
+            "yara.compile('%s', externals=%s).match(data=''); print 'It worked!'\""
+        externals = "{'asl_filename': '', 'asl_filetype': '', 'asl_protocol': '','asl_submitter': ''}"
         p = subprocess.Popen(
-            cmd % rule_path, stdout=subprocess.PIPE,
+            cmd % (rule_path, externals), stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, shell=True, cwd="/tmp"
         )
 
@@ -442,8 +449,28 @@ class Yara(ServiceBase):
 
         self.task = request.task
         local_filename = request.download()
+        try:
+            filename = posixpath.basename(self.task.path)
+        except:
+            filename = '-'
+        try:
+            filetype = self.task.get('tag')
+        except:
+            filetype = '-'
+        try:
+            submitter = self.task.get('submitter')
+        except:
+            submitter = '-'
+        protocol = "-"
         with self.initialization_lock:
-            matches = self.rules.match(local_filename)
+            matches = self.rules.match(local_filename,
+                                       externals=
+                                       {'asl_filename': str(filename),
+                                        'asl_filetype': str(filetype),
+                                        'asl_protocol': str(protocol),
+                                        'asl_submitter': str(submitter),
+                                        }
+                                       )
         self.counters[RULE_HITS] += len(matches)
         request.result = self._extract_result_from_matches(matches)
 

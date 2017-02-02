@@ -28,7 +28,22 @@ Currently AL runs Yara 3.4, and therefore supports the following external module
  MALWARE Standard:
  * https://[AL instance]/yara_standard.html
  
- 
+ AL Specific Conditions:
+
+ AssemblyLine supports the following condition keywords external to Yara:
+
+ * asl_filename == the filename of the submitted file (posixpath.basename(request.path))
+
+ * asl_filetype == the AL category filetype (fileinfo.tag)
+
+ * asl_protocol == the protocol defined in the submission metadata (protocol)
+
+ * asl_submitter == the userid of the submitter of the AL file (submission.submitter)
+
+ **NOTE: The above conditions are meant to aid with large amounts of live data ingestion.
+ When creating rules in AL with the above conditions, remember that there is no way to override
+ these conditions (i.e. be aware of users also submitting their files manually)**
+
  YARA rules can be adjusted/imported/reviewed in the AL GUI available at https://[AL instance]/signatures.html 
  
  For large ruleset imports, a Python importer script is located at assemblyline.al.run.yara_importer.py: 

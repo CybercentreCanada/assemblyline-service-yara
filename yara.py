@@ -390,11 +390,11 @@ class Yara(ServiceBase):
         almeta.classification = almeta.classification.upper()
 
     @staticmethod
-    def _paranoid_rule_check(rule_path, yara_externals):
+    def _paranoid_rule_check(rule_path, get_yara_externals):
         cmd = "python -c \"import yara; " \
             "yara.compile('%s', externals=%s).match(data=''); print 'It worked!'\""
         p = subprocess.Popen(
-            cmd % (rule_path, yara_externals), stdout=subprocess.PIPE,
+            cmd % (rule_path, get_yara_externals), stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, shell=True, cwd="/tmp"
         )
 
@@ -453,13 +453,13 @@ class Yara(ServiceBase):
                 sval = None
             if not sval:
                 # Check metadata dictionary
-                smeta = self.task.get('metadata')
-                if len(smeta) > 0:
+                smeta = self.task.metadata
+                if not smeta:
                     sval = smeta.get(i, None)
             if not sval:
                 # Check params dictionary
-                smeta = self.task.get('params')
-                if len(smeta) > 0:
+                smeta = self.task.params
+                if not smeta:
                     sval = smeta.get(i, None)
             # Create dummy value if item not found
             if not sval:
@@ -468,9 +468,7 @@ class Yara(ServiceBase):
             yara_externals[k] = sval
 
         with self.initialization_lock:
-            matches = self.rules.match(local_filename,
-                                       externals=yara_externals
-                                       )
+            matches = self.rules.match(local_filename, externals=yara_externals)
         self.counters[RULE_HITS] += len(matches)
         request.result = self._extract_result_from_matches(matches)
 

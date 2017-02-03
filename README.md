@@ -28,21 +28,23 @@ Currently AL runs Yara 3.4, and therefore supports the following external module
  MALWARE Standard:
  * https://[AL instance]/yara_standard.html
  
- AL Specific Conditions:
+ AL Custom Conditions:
 
- AssemblyLine supports the following condition keywords external to Yara:
+ AssemblyLine supports The following are the default externals provided in ASL:
 
- * asl_filename == the filename of the submitted file (posixpath.basename(request.path))
+ * asl_mime == the filename of the submitted file (fileinfo.mime)
 
- * asl_filetype == the AL category filetype (fileinfo.tag)
-
- * asl_protocol == the protocol defined in the submission metadata (protocol)
+ * asl_tag == the AL file type category (fileinfo.tag)
 
  * asl_submitter == the userid of the submitter of the AL file (submission.submitter)
+ 
+ Additional conditions can be added in AL configuration under system.yara.yara_externals. Please read reference manual
+ for further information.
 
- **NOTE: The above conditions are meant to aid with large amounts of live data ingestion.
- When creating rules in AL with the above conditions, remember that there is no way to override
- these conditions (i.e. be aware of users also submitting their files manually)**
+ **NOTE: AL custom conditions are meant to aid with large amounts of live data ingestion where the submission source, 
+ filetype, etc. can be used to reduce false positives without disabling rules entirely.
+ When creating Yara rules in AL with the above conditions, remember that there is no way to override
+ these conditions**
 
  YARA rules can be adjusted/imported/reviewed in the AL GUI available at https://[AL instance]/signatures.html 
  

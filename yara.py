@@ -152,6 +152,7 @@ class Yara(ServiceBase):
                                             'meta.al_status:DEPLOYED OR '
                                             'meta.al_status:NOISY')
         self.use_riak_for_rules = self.cfg.get('USE_RIAK_FOR_RULES', False)
+        self.get_yara_externals = {"asl_%s" % i: i for i in config.system.yara.yara_externals}
 
     def _add_resultinfo_for_match(self, result, match):
         almeta = YaraMetadata(match)
@@ -324,15 +325,9 @@ class Yara(ServiceBase):
             with open(rules_file, 'w') as f:
                 f.write(rules_txt)
 
-            self._paranoid_rule_check(rules_file)
+            self._paranoid_rule_check(rules_file, self.get_yara_externals)
 
-            rules = yara.compile(rules_file,
-                                 externals={
-                                     'asl_filename': '',
-                                     'asl_filetype': '',
-                                     'asl_protocol': '',
-                                     'asl_submitter': ''
-                                    })
+            rules = yara.compile(rules_file, externals=self.get_yara_externals)
             rules_md5 = md5(remainder).hexdigest()
             return last_update, rules, rules_md5
         except yara.SyntaxError as e:
@@ -395,12 +390,11 @@ class Yara(ServiceBase):
         almeta.classification = almeta.classification.upper()
 
     @staticmethod
-    def _paranoid_rule_check(rule_path):
+    def _paranoid_rule_check(rule_path, yara_externals):
         cmd = "python -c \"import yara; " \
             "yara.compile('%s', externals=%s).match(data=''); print 'It worked!'\""
-        externals = "{'asl_filename': '', 'asl_filetype': '', 'asl_protocol': '','asl_submitter': ''}"
         p = subprocess.Popen(
-            cmd % (rule_path, externals), stdout=subprocess.PIPE,
+            cmd % (rule_path, yara_externals), stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, shell=True, cwd="/tmp"
         )
 
@@ -449,27 +443,33 @@ class Yara(ServiceBase):
 
         self.task = request.task
         local_filename = request.download()
-        try:
-            filename = posixpath.basename(self.task.path)
-        except:
-            filename = '-'
-        try:
-            filetype = self.task.get('tag')
-        except:
-            filetype = '-'
-        try:
-            submitter = self.task.get('submitter')
-        except:
-            submitter = '-'
-        protocol = "-"
+
+        yara_externals = {}
+        for k, i in self.get_yara_externals.iteritems():
+            # Check default request.task fields
+            try:
+                sval = self.task.get(i)
+            except:
+                sval = None
+            if not sval:
+                # Check metadata dictionary
+                smeta = self.task.get('metadata')
+                if len(smeta) > 0:
+                    sval = smeta.get(i, None)
+            if not sval:
+                # Check params dictionary
+                smeta = self.task.get('params')
+                if len(smeta) > 0:
+                    sval = smeta.get(i, None)
+            # Create dummy value if item not found
+            if not sval:
+                sval = i
+
+            yara_externals[k] = sval
+
         with self.initialization_lock:
             matches = self.rules.match(local_filename,
-                                       externals=
-                                       {'asl_filename': str(filename),
-                                        'asl_filetype': str(filetype),
-                                        'asl_protocol': str(protocol),
-                                        'asl_submitter': str(submitter),
-                                        }
+                                       externals=yara_externals
                                        )
         self.counters[RULE_HITS] += len(matches)
         request.result = self._extract_result_from_matches(matches)

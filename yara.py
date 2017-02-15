@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 import os
+import posixpath
 import shutil
 import subprocess
 import tempfile
@@ -99,7 +100,7 @@ class Yara(ServiceBase):
                           "are reported but do not influence the score. DEPLOYED rules score according to their " \
                           "rule group (implant => 1000 | exploit & tool => 500 | technique => 100 | info => 0)."
     SERVICE_ENABLED = True
-    SERVICE_REVISION = ServiceBase.parse_revision('$Id: 00a7ae68c0123bb6322f061d7bad3ad458617d59 $')
+    SERVICE_REVISION = ServiceBase.parse_revision('$Id$')
     SERVICE_VERSION = '1'
     SERVICE_DEFAULT_CONFIG = {
         "USE_RIAK_FOR_RULES": True,
@@ -151,6 +152,7 @@ class Yara(ServiceBase):
                                             'meta.al_status:DEPLOYED OR '
                                             'meta.al_status:NOISY')
         self.use_riak_for_rules = self.cfg.get('USE_RIAK_FOR_RULES', False)
+        self.get_yara_externals = {"asl_%s" % i: i for i in config.system.yara.yara_externals}
 
     def _add_resultinfo_for_match(self, result, match):
         almeta = YaraMetadata(match)
@@ -323,9 +325,9 @@ class Yara(ServiceBase):
             with open(rules_file, 'w') as f:
                 f.write(rules_txt)
 
-            self._paranoid_rule_check(rules_file)
+            self._paranoid_rule_check(rules_file, self.get_yara_externals)
 
-            rules = yara.compile(rules_file)
+            rules = yara.compile(rules_file, externals=self.get_yara_externals)
             rules_md5 = md5(remainder).hexdigest()
             return last_update, rules, rules_md5
         except yara.SyntaxError as e:
@@ -388,12 +390,11 @@ class Yara(ServiceBase):
         almeta.classification = almeta.classification.upper()
 
     @staticmethod
-    def _paranoid_rule_check(rule_path):
+    def _paranoid_rule_check(rule_path, get_yara_externals):
         cmd = "python -c \"import yara; " \
-            "yara.compile('%s').match(data=''); print 'It worked!'\""
-
+            "yara.compile('%s', externals=%s).match(data=''); print 'It worked!'\""
         p = subprocess.Popen(
-            cmd % rule_path, stdout=subprocess.PIPE,
+            cmd % (rule_path, get_yara_externals), stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, shell=True, cwd="/tmp"
         )
 
@@ -442,8 +443,32 @@ class Yara(ServiceBase):
 
         self.task = request.task
         local_filename = request.download()
+
+        yara_externals = {}
+        for k, i in self.get_yara_externals.iteritems():
+            # Check default request.task fields
+            try:
+                sval = self.task.get(i)
+            except:
+                sval = None
+            if not sval:
+                # Check metadata dictionary
+                smeta = self.task.metadata
+                if not smeta:
+                    sval = smeta.get(i, None)
+            if not sval:
+                # Check params dictionary
+                smeta = self.task.params
+                if not smeta:
+                    sval = smeta.get(i, None)
+            # Create dummy value if item not found
+            if not sval:
+                sval = i
+
+            yara_externals[k] = sval
+
         with self.initialization_lock:
-            matches = self.rules.match(local_filename)
+            matches = self.rules.match(local_filename, externals=yara_externals)
         self.counters[RULE_HITS] += len(matches)
         request.result = self._extract_result_from_matches(matches)
 

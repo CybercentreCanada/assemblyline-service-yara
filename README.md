@@ -26,11 +26,12 @@ Currently AL runs Yara 3.4, and therefore supports the following external module
  * https://[AL instance]/static/pdf/yara.pdf (Yara user manual Ver. 1.6)
  
  MALWARE Standard:
+ 
  * https://[AL instance]/yara_standard.html
  
  AL Custom Conditions:
 
- AssemblyLine supports The following are the default externals provided in ASL:
+The following are the default externals provided in AL:
 
  * asl_mime == the filename of the submitted file (fileinfo.mime)
 
@@ -38,7 +39,7 @@ Currently AL runs Yara 3.4, and therefore supports the following external module
 
  * asl_submitter == the userid of the submitter of the AL file (submission.submitter)
  
- Additional conditions can be added in AL configuration under system.yara.yara_externals. Please read reference manual
+ Additional conditions can be added in AL configuration under system.yara.externals. Please read reference manual
  for further information.
 
  **NOTE: AL custom conditions are meant to aid with large amounts of live data ingestion where the submission source, 

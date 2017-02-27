@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 
 import os
-import posixpath
 import shutil
 import subprocess
 import tempfile
@@ -401,7 +400,10 @@ class Yara(ServiceBase):
         stdout, stderr = p.communicate()
 
         if stderr or stdout != 'It worked!\n':
-            raise Exception("Paranoid rule check failed! " + stderr)
+            if "yara.SyntaxError" in stderr:
+                raise yara.SyntaxError(stderr)
+            else:
+                raise Exception("Paranoid rule check failed! " + stderr)
 
     def _update_rules(self, **_):
         self.log.info("Starting Yara's rule updater...")

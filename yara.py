@@ -401,7 +401,7 @@ class Yara(ServiceBase):
 
         if stderr or stdout != 'It worked!\n':
             if "yara.SyntaxError" in stderr:
-                raise yara.SyntaxError(stderr.split("yara.SyntaxError: "))
+                raise yara.SyntaxError(stderr.split("yara.SyntaxError: ")[1])
             else:
                 raise Exception("Paranoid rule check failed! " + stderr)
 

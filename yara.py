@@ -390,16 +390,14 @@ class Yara(ServiceBase):
 
     @staticmethod
     def _paranoid_rule_check(rule_path, get_yara_externals):
-        cmd = "python -c \"import yara; " \
-            "yara.compile('%s', externals=%s).match(data=''); print 'It worked!'\""
-        p = subprocess.Popen(
-            cmd % (rule_path, get_yara_externals), stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, shell=True, cwd="/tmp"
-        )
+        print_val = "--==Rules_validated++__"
+        cmd = "python -c \"import yara; yara.compile('%s', externals=%s).match(data=''); print '%s'\""
+        p = subprocess.Popen(cmd % (rule_path, get_yara_externals, print_val), stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, shell=True, cwd="/tmp")
 
         stdout, stderr = p.communicate()
 
-        if stderr or stdout != 'It worked!\n':
+        if print_val not in stderr and print_val not in stdout:
             if "yara.SyntaxError" in stderr:
                 raise yara.SyntaxError(stderr.split("yara.SyntaxError: ")[1])
             else:

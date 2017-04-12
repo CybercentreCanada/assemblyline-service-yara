@@ -1,6 +1,5 @@
 from __future__ import absolute_import
 
-import datetime
 import os
 import shutil
 import subprocess
@@ -305,10 +304,6 @@ class Yara(ServiceBase):
                     entry_name, more, 's' if more > 1 else ''))
 
     def _compile_rules(self, rules_txt):
-        valid_file = False
-        last_update = None
-        rules = None
-        rules_md5 = None
         tmp_dir = tempfile.mkdtemp(dir='/tmp')
         try:
             # Extract the first line of the rules which should look like this:
@@ -333,7 +328,7 @@ class Yara(ServiceBase):
 
             rules = yara.compile(rules_file, externals=self.get_yara_externals)
             rules_md5 = md5(remainder).hexdigest()
-            valid_file = True
+            return last_update, rules, rules_md5
         except yara.SyntaxError as e:
             lines = rules_txt.split("\n")
 
@@ -349,34 +344,16 @@ class Yara(ServiceBase):
 
                 if parts[0] in ('', 'global ', 'global private ', 'private '):
                     offending_rule = parts[1].split(":")[0].replace(" ", "").replace("{", "")
-                    error_message = "Yara rule '{0}' could not be loaded because of an error at line {1} [{2}]." \
-                        .format(offending_rule, original_idx - idx, e.message.split(": ")[1])
-                    self.log.error("{}. Marking rule as INVALID.".format(error_message))
-                    try:
-                        # Get the offending sig ID
-                        update_client = Client(self.signature_url, auth=(self.signature_user, self.signature_pass))
-                        sig_query = "name:{} AND meta.al_status:(DEPLOYED OR NOISY)" .format(offending_rule)
-                        for sig in update_client.search.stream.signature(sig_query):
-                            sigsid = sig['_yz_rk']
-                            print sigsid
-                            # Change status to INVALID in Riak and append error message to comments
-                            ds = forge.get_datastore()
-                            sigdata = ds.get_signature(sigsid)
-                            # Check this in case another worker already marked rule
-                            if sigdata['meta']['al_status'] == 'INVALID':
-                                continue
-                            sigdata['meta']['al_status'] = 'INVALID'
-                            today = datetime.date.today().isoformat()
-                            sigdata['meta']['al_state_change_date'] = today
-                            sigdata['meta']['al_state_change_user'] = self.signature_user
-                            sigdata['comments'].append("AL ERROR MSG:{}" .format(error_message))
-                            ds.save_signature(sigsid, sigdata)
-                    except Exception as e:
-                        self.log.error(e)
-
+                    raise SyntaxError(
+                        "Yara rule '%s' could not be loaded "
+                        "because of an error at line %s [%s]" % (
+                            offending_rule, original_idx - idx,
+                            e.message.split(": ")[1]
+                        )
+                    )
+            raise e
         finally:
             shutil.rmtree(tmp_dir)
-            return valid_file, last_update, rules, rules_md5
 
     def _extract_result_from_matches(self, matches):
         result = Result(default_usage=TAG_USAGE.CORRELATION)
@@ -436,31 +413,24 @@ class Yara(ServiceBase):
         if not update_available:
             self.log.info("No update available. Stopping...")
             return
-        valid_file = False
-        rules = None
-        last_update = None
-        rules_md5 = None
-        while not valid_file:
-            print 'tried'
-            self.log.info("Downloading signatures with query: %s (%s)" % (self.signature_query, str(self.last_update)))
 
-            signature_data = StringIO()
-            update_client.signature.download(output=signature_data, query=self.signature_query, safe=True)
-            rules_txt = signature_data.getvalue()
-            signature_data.close()
+        self.log.info("Downloading signatures with query: %s (%s)" % (self.signature_query, str(self.last_update)))
 
-            if not rules_txt:
-                errormsg = "No rules to compile:\n%s" % rules_txt
-                self.log.error("{}/api/v3/signature/download/?query={} - {}:{}".format(
-                    self.signature_url, self.signature_query, self.signature_user, self.signature_pass)
-                )
-                self.log.error(errormsg)
-                raise ConfigException(errormsg)
+        signature_data = StringIO()
+        update_client.signature.download(output=signature_data, query=self.signature_query, safe=True)
 
-            self.signature_cache.save(self.rule_path, rules_txt)
+        rules_txt = signature_data.getvalue()
+        if not rules_txt:
+            errormsg = "No rules to compile:\n%s" % rules_txt
+            self.log.error("{}/api/v3/signature/download/?query={} - {}:{}".format(
+                self.signature_url, self.signature_query, self.signature_user, self.signature_pass)
+            )
+            self.log.error(errormsg)
+            raise ConfigException(errormsg)
 
-            valid_file, last_update, rules, rules_md5 = self._compile_rules(rules_txt)
+        self.signature_cache.save(self.rule_path, rules_txt)
 
+        last_update, rules, rules_md5 = self._compile_rules(rules_txt)
         if rules:
             with self.initialization_lock:
                 self.last_update = last_update

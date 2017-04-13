@@ -493,6 +493,7 @@ class Yara(ServiceBase):
         try:
             # Even if we are using riak for rules we may have a saved copy
             # of the rules. Try to load and compile them first.
+            self.signature_cache.makedirs(os.path.dirname(self.rule_path))
             rules_txt = self.signature_cache.get(self.rule_path)
             if rules_txt:
                 self.log.info("Yara loaded rules from cached file: %s", self.rule_path)

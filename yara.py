@@ -408,11 +408,12 @@ class Yara(ServiceBase):
 
         update_client = Client(self.signature_url, auth=(self.signature_user, self.signature_pass))
 
-        api_response = update_client.signature.update_available(self.last_update)
-        update_available = api_response.get('update_available', False)
-        if not update_available:
-            self.log.info("No update available. Stopping...")
-            return
+        if os.path.exists(self.rule_path):
+            api_response = update_client.signature.update_available(self.last_update)
+            update_available = api_response.get('update_available', False)
+            if not update_available:
+                self.log.info("No update available. Stopping...")
+                return
 
         self.log.info("Downloading signatures with query: %s (%s)" % (self.signature_query, str(self.last_update)))
 

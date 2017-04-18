@@ -2,7 +2,6 @@ from __future__ import absolute_import
 
 import os
 import shutil
-import subprocess
 import tempfile
 import threading
 
@@ -13,6 +12,7 @@ from cStringIO import StringIO
 
 from assemblyline.common.exceptions import ConfigException
 from assemblyline.common.isotime import now_as_iso
+from assemblyline.common.yara.YaraValidator import YaraValidator
 from assemblyline.al.common import forge
 from assemblyline.al.common.result import Result, ResultSection
 from assemblyline.al.common.result import TAG_TYPE, TAG_SCORE, TAG_USAGE, Tag
@@ -305,55 +305,34 @@ class Yara(ServiceBase):
 
     def _compile_rules(self, rules_txt):
         tmp_dir = tempfile.mkdtemp(dir='/tmp')
+        # Extract the first line of the rules which should look like this:
+        # // Signatures last updated: LAST_UPDATE_IN_ISO_FORMAT
+        first_line, remainder = rules_txt.split('\n', 1)
+        prefix = '// Signatures last updated: '
+
+        if first_line.startswith(prefix):
+            last_update = first_line.replace(prefix, '')
+        else:
+            self.log.warning(
+                "Couldn't read last update time from %s", rules_txt[:40]
+            )
+            remainder = rules_txt
+            last_update = now_as_iso()
+
+        rules_file = os.path.join(tmp_dir, 'rules.yar')
+        with open(rules_file, 'w') as f:
+            f.write(rules_txt)
         try:
-            # Extract the first line of the rules which should look like this:
-            # // Signatures last updated: LAST_UPDATE_IN_ISO_FORMAT
-            first_line, remainder = rules_txt.split('\n', 1)
-            prefix = '// Signatures last updated: '
-
-            if first_line.startswith(prefix):
-                last_update = first_line.replace(prefix, '')
-            else:
-                self.log.warning(
-                    "Couldn't read last update time from %s", rules_txt[:40]
-                )
-                remainder = rules_txt
-                last_update = now_as_iso()
-
-            rules_file = os.path.join(tmp_dir, 'rules.yar')
-            with open(rules_file, 'w') as f:
-                f.write(rules_txt)
-
-            self._paranoid_rule_check(rules_file, self.get_yara_externals)
-
-            rules = yara.compile(rules_file, externals=self.get_yara_externals)
-            rules_md5 = md5(remainder).hexdigest()
-            return last_update, rules, rules_md5
-        except yara.SyntaxError as e:
-            lines = rules_txt.split("\n")
-
-            original_idx = int(e.message.split("(")[1].split(")")[0])
-            idx = original_idx
-            while idx != -1:
-                idx -= 1
-                line = lines[idx]
-
-                parts = line.split("rule ", 1)
-                if len(parts) < 2:
-                    continue
-
-                if parts[0] in ('', 'global ', 'global private ', 'private '):
-                    offending_rule = parts[1].split(":")[0].replace(" ", "").replace("{", "")
-                    raise SyntaxError(
-                        "Yara rule '%s' could not be loaded "
-                        "because of an error at line %s [%s]" % (
-                            offending_rule, original_idx - idx,
-                            e.message.split(": ")[1]
-                        )
-                    )
-            raise e
-        finally:
+            validate = YaraValidator(rules_file, externals=self.get_yara_externals)
+            validate.validate_rules(datastore=True)
+        except Exception as e:
             shutil.rmtree(tmp_dir)
+            raise e
+
+        rules = yara.compile(rules_file, externals=self.get_yara_externals)
+        rules_md5 = md5(remainder).hexdigest()
+        shutil.rmtree(tmp_dir)
+        return last_update, rules, rules_md5
 
     def _extract_result_from_matches(self, matches):
         result = Result(default_usage=TAG_USAGE.CORRELATION)
@@ -387,21 +366,6 @@ class Yara(ServiceBase):
     @staticmethod
     def _normalize_metadata(almeta):
         almeta.classification = almeta.classification.upper()
-
-    @staticmethod
-    def _paranoid_rule_check(rule_path, get_yara_externals):
-        print_val = "--==Rules_validated++__"
-        cmd = "python -c \"import yara; yara.compile('%s', externals=%s).match(data=''); print '%s'\""
-        p = subprocess.Popen(cmd % (rule_path, get_yara_externals, print_val), stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True, cwd="/tmp")
-
-        stdout, stderr = p.communicate()
-
-        if print_val not in stderr and print_val not in stdout:
-            if "yara.SyntaxError" in stderr:
-                raise yara.SyntaxError(stderr.split("yara.SyntaxError: ")[1])
-            else:
-                raise Exception("Paranoid rule check failed! " + stderr)
 
     def _update_rules(self, **_):
         self.log.info("Starting Yara's rule updater...")

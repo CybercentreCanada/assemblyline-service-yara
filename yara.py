@@ -515,6 +515,7 @@ class Yara(ServiceBase):
             self._register_update_callback(self._update_rules, execute_now=force_rule_download,
                                            freq=UpdaterFrequency.MINUTE)
 
+
         self.log.info(
             "yara started with service version: %s", self.get_service_version()
         )

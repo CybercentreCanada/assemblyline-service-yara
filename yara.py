@@ -305,34 +305,37 @@ class Yara(ServiceBase):
 
     def _compile_rules(self, rules_txt):
         tmp_dir = tempfile.mkdtemp(dir='/tmp')
-        # Extract the first line of the rules which should look like this:
-        # // Signatures last updated: LAST_UPDATE_IN_ISO_FORMAT
-        first_line, remainder = rules_txt.split('\n', 1)
-        prefix = '// Signatures last updated: '
-
-        if first_line.startswith(prefix):
-            last_update = first_line.replace(prefix, '')
-        else:
-            self.log.warning(
-                "Couldn't read last update time from %s", rules_txt[:40]
-            )
-            remainder = rules_txt
-            last_update = now_as_iso()
-
-        rules_file = os.path.join(tmp_dir, 'rules.yar')
-        with open(rules_file, 'w') as f:
-            f.write(rules_txt)
         try:
-            validate = YaraValidator(rules_file, externals=self.get_yara_externals)
-            validate.validate_rules(datastore=True)
-        except Exception as e:
-            shutil.rmtree(tmp_dir)
-            raise e
+            # Extract the first line of the rules which should look like this:
+            # // Signatures last updated: LAST_UPDATE_IN_ISO_FORMAT
+            first_line, remainder = rules_txt.split('\n', 1)
+            prefix = '// Signatures last updated: '
 
-        rules = yara.compile(rules_file, externals=self.get_yara_externals)
-        rules_md5 = md5(remainder).hexdigest()
-        shutil.rmtree(tmp_dir)
-        return last_update, rules, rules_md5
+            if first_line.startswith(prefix):
+                last_update = first_line.replace(prefix, '')
+            else:
+                self.log.warning(
+                    "Couldn't read last update time from %s", rules_txt[:40]
+                )
+                remainder = rules_txt
+                last_update = now_as_iso()
+
+            rules_file = os.path.join(tmp_dir, 'rules.yar')
+            with open(rules_file, 'w') as f:
+                f.write(rules_txt)
+            try:
+                validate = YaraValidator(rules_file, externals=self.get_yara_externals)
+                validate.validate_rules(datastore=True)
+            except Exception as e:
+                raise e
+
+            rules = yara.compile(rules_file, externals=self.get_yara_externals)
+            rules_md5 = md5(remainder).hexdigest()
+            return last_update, rules, rules_md5
+        except Exception as e:
+            raise e
+        finally:
+            shutil.rmtree(tmp_dir)
 
     def _extract_result_from_matches(self, matches):
         result = Result(default_usage=TAG_USAGE.CORRELATION)
@@ -372,7 +375,7 @@ class Yara(ServiceBase):
 
         update_client = Client(self.signature_url, auth=(self.signature_user, self.signature_pass))
 
-        if os.path.exists(self.rule_path):
+        if self.signature_cache.exists(self.rule_path):
             api_response = update_client.signature.update_available(self.last_update)
             update_available = api_response.get('update_available', False)
             if not update_available:
@@ -478,8 +481,6 @@ class Yara(ServiceBase):
         if self.use_riak_for_rules:
             self._register_update_callback(self._update_rules, execute_now=force_rule_download,
                                            freq=UpdaterFrequency.MINUTE)
-
-
         self.log.info(
             "yara started with service version: %s", self.get_service_version()
         )

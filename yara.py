@@ -152,7 +152,6 @@ class Yara(ServiceBase):
                                             'meta.al_status:NOISY')
         self.use_riak_for_rules = self.cfg.get('USE_RIAK_FOR_RULES', False)
         self.get_yara_externals = {"asl_%s" % i: i for i in config.system.yara.externals}
-        self.validate = YaraValidator(externals=self.get_yara_externals, logger=self.log)
 
     def _add_resultinfo_for_match(self, result, match):
         almeta = YaraMetadata(match)
@@ -325,7 +324,8 @@ class Yara(ServiceBase):
             with open(rules_file, 'w') as f:
                 f.write(rules_txt)
             try:
-                self.validate.validate_rules(rules_file, datastore=True)
+                validate = YaraValidator(externals=self.get_yara_externals, logger=self.log)
+                validate.validate_rules(rules_file, datastore=True)
             except Exception as e:
                 raise e
 

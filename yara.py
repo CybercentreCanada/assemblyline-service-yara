@@ -317,20 +317,24 @@ class Yara(ServiceBase):
                 self.log.warning(
                     "Couldn't read last update time from %s", rules_txt[:40]
                 )
-                remainder = rules_txt
-                last_update = now_as_iso()
 
             rules_file = os.path.join(tmp_dir, 'rules.yar')
             with open(rules_file, 'w') as f:
                 f.write(rules_txt)
             try:
                 validate = YaraValidator(externals=self.get_yara_externals, logger=self.log)
-                validate.validate_rules(rules_file, datastore=True)
+                edited = validate.validate_rules(rules_file, datastore=True)
             except Exception as e:
                 raise e
-
+            # Grab the final output if Yara Validator found problem rules
+            if edited:
+                with open(rules_file, 'r') as f:
+                    clean_data = f.read()
+            else:
+                clean_data = rules_txt
+            last_update = now_as_iso()
             rules = yara.compile(rules_file, externals=self.get_yara_externals)
-            rules_md5 = md5(remainder).hexdigest()
+            rules_md5 = md5(clean_data).hexdigest()
             return last_update, rules, rules_md5
         except Exception as e:
             raise e

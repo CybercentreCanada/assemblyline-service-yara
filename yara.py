@@ -308,7 +308,7 @@ class Yara(ServiceBase):
         try:
             # Extract the first line of the rules which should look like this:
             # // Signatures last updated: LAST_UPDATE_IN_ISO_FORMAT
-            first_line, remainder = rules_txt.split('\n', 1)
+            first_line, clean_data = rules_txt.split('\n', 1)
             prefix = '// Signatures last updated: '
 
             if first_line.startswith(prefix):
@@ -317,6 +317,8 @@ class Yara(ServiceBase):
                 self.log.warning(
                     "Couldn't read last update time from %s", rules_txt[:40]
                 )
+                last_update = now_as_iso()
+                clean_data = rules_txt
 
             rules_file = os.path.join(tmp_dir, 'rules.yar')
             with open(rules_file, 'w') as f:
@@ -329,10 +331,14 @@ class Yara(ServiceBase):
             # Grab the final output if Yara Validator found problem rules
             if edited:
                 with open(rules_file, 'r') as f:
-                    clean_data = f.read()
-            else:
-                clean_data = rules_txt
-            last_update = now_as_iso()
+                    sdata = f.read()
+                first_line, clean_data = sdata.split('\n', 1)
+                if first_line.startswith(prefix):
+                    last_update = first_line.replace(prefix, '')
+                else:
+                    last_update = now_as_iso()
+                    clean_data = sdata
+
             rules = yara.compile(rules_file, externals=self.get_yara_externals)
             rules_md5 = md5(clean_data).hexdigest()
             return last_update, rules, rules_md5

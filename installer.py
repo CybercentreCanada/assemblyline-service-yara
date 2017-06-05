@@ -37,7 +37,7 @@ def install(alsi):
     alsi.runcmd("cd {0}".format(local_yara_support))
     alsi.runcmd("tar -zxf yara-python.tar.gz")
     alsi.runcmd("cd yara-python")
-    alsi.runcmd("python setup.py build")
+    alsi.runcmd("python setup.py build --enable-dotnet")
     # Running install and statically binding libyara to yara-python. Only use dynamic-linking option if you would need
     # to use libyara outside of yara-python. If you need this option, run this instead:
     # alsi.runcmd("sudo python setup.py install --dynamic-linking")

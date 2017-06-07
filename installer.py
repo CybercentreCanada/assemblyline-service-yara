@@ -20,10 +20,10 @@ def install(alsi):
     #     'make',
     #     'gcc',
     # ])
-    #
-    # alsi.runcmd("cd {0}".format(local_yara_support))
+    # wd = os.getcwd()
+    # os.chdir(local_yara_support)
     # alsi.runcmd("tar -zxf yara-3.6.1.tar.gz")
-    # alsi.runcmd("cd yara-3.6.1")
+    # os.chdir(os.path.join(local_yara_support, "yara-3.6.1"))
     # alsi.runcmd("./bootstrap.sh")
     # alsi.runcmd("./configure --enable-dotnet")
     # alsi.runcmd("make")
@@ -32,11 +32,12 @@ def install(alsi):
     # local_yara_python = os.path.join(local_yara_support, 'yara-python-3.6.1.tar.gz')
     # alsi.fetch_package('yara-python-3.6.1.tar.gz', local_yara_python)
     #
-    # alsi.runcmd("cd {0}" .format(local_yara_support))
+    # os.chdir(local_yara_support)
     # alsi.runcmd("tar -zxf yara-python-3.6.1.tar.gz")
-    # alsi.runcmd("cd yara-python-3.6.1")
+    # os.chdir(os.path.join(local_yara_support, "yara-python-3.6.1"))
     # alsi.runcmd("python setup.py build --enable-dotnet")
     # alsi.runcmd("sudo python setup.py install --dynamic-linking")
+    # os.chdir(wd)
 
 if __name__ == '__main__':
     from assemblyline.al.install import SiteInstaller

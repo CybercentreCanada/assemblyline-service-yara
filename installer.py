@@ -8,7 +8,7 @@ def install(alsi):
 
     # Build commands
     #local_yara = os.path.join(local_yara_support, 'yara-3.6.1.tar.gz')
-    #alsi.fetch_package('yara/yara-3.6.1.tar.gz', local_yara)
+    #alsi.fetch_package('yara-3.6.1.tar.gz', local_yara)
 
     # alsi.sudo_apt_install([
     #     'automake',
@@ -31,7 +31,7 @@ def install(alsi):
     # alsi.runcmd("sudo python setup.py install --dynamic-linking")
 
     local_yara_python = os.path.join(local_yara_support, 'yara-python-3.6.1.tar.gz')
-    alsi.fetch_package('yara/yara-python-3.6.1.tar.gz', local_yara_python)
+    alsi.fetch_package('yara-python-3.6.1.tar.gz', local_yara_python)
 
     alsi.runcmd("cd {0}" .format(local_yara_support))
     alsi.runcmd("tar -zxf yara-python-3.6.1.tar.gz")

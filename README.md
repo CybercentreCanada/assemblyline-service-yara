@@ -6,7 +6,7 @@ This Assemblyline service runs the Yara application against all file types.
 
 ## Execution
 
-Currently AL runs Yara 3.6.2, and therefore supports the following external modules:
+Currently AL runs Yara 3.6.3, and therefore supports the following external modules:
 
 * Dotnet
 * ELF

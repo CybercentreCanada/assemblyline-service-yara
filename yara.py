@@ -104,8 +104,8 @@ class Yara(ServiceBase):
     SERVICE_DEFAULT_CONFIG = {
         "USE_RIAK_FOR_RULES": True,
         "RULE_PATH": 'rules.yar',
-        "SIGNATURE_USER": config.auth.internal.users.internal.uname,
-        "SIGNATURE_PASS": config.auth.internal.users.internal.password,
+        "SIGNATURE_USER": 'user',
+        "SIGNATURE_PASS": 'changeme',
         "SIGNATURE_URL": 'https://localhost:443',
         "SIGNATURE_QUERY": 'meta.al_status:DEPLOYED OR meta.al_status:NOISY'
     }

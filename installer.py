@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+
 def install(alsi):
 
     alsi.install_yara_3()

@@ -152,6 +152,7 @@ class Yara(ServiceBase):
                                             'meta.al_status:NOISY')
         self.use_riak_for_rules = self.cfg.get('USE_RIAK_FOR_RULES', False)
         self.get_yara_externals = {"asl_%s" % i: i for i in config.system.yara.externals}
+        self.update_client = None
 
     def _add_resultinfo_for_match(self, result, match):
         almeta = YaraMetadata(match)
@@ -383,10 +384,11 @@ class Yara(ServiceBase):
     def _update_rules(self, **_):
         self.log.info("Starting Yara's rule updater...")
 
-        update_client = Client(self.signature_url, auth=(self.signature_user, self.signature_pass))
+        if not self.update_client:
+            self.update_client = Client(self.signature_url, auth=(self.signature_user, self.signature_pass))
 
         if self.signature_cache.exists(self.rule_path):
-            api_response = update_client.signature.update_available(self.last_update)
+            api_response = self.update_client.signature.update_available(self.last_update)
             update_available = api_response.get('update_available', False)
             if not update_available:
                 self.log.info("No update available. Stopping...")
@@ -395,7 +397,7 @@ class Yara(ServiceBase):
         self.log.info("Downloading signatures with query: %s (%s)" % (self.signature_query, str(self.last_update)))
 
         signature_data = StringIO()
-        update_client.signature.download(output=signature_data, query=self.signature_query, safe=True)
+        self.update_client.signature.download(output=signature_data, query=self.signature_query, safe=True)
 
         rules_txt = signature_data.getvalue()
         if not rules_txt:

@@ -456,7 +456,6 @@ class Yara(ServiceBase):
                 if e.message != "internal error: 30":
                     raise
                 else:
-                    test = self.task.sid
                     self.log.warning("Yara internal error 30 detected on submission {}" .format(self.task.sid))
                     section = ResultSection(title_text="Yara scan not completed.")
                     section.add_line("File returned too many matches with current rule set and Yara exited.")

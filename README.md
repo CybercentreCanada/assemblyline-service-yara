@@ -34,11 +34,11 @@ Currently AL runs Yara 3.6.3, and therefore supports the following external modu
 
 The following are the default externals provided in AL:
 
- * asl_mime == the filename of the submitted file (fileinfo.mime)
+ * al_mime == the filename of the submitted file (fileinfo.mime)
 
- * asl_tag == the AL file type category (fileinfo.tag)
+ * al_tag == the AL file type category (fileinfo.tag)
 
- * asl_submitter == the userid of the submitter of the AL file (submission.submitter)
+ * al_submitter == the userid of the submitter of the AL file (submission.submitter)
  
  Additional conditions can be added in AL configuration under system.yara.externals. Please read reference manual
  for further information.

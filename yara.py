@@ -151,7 +151,7 @@ class Yara(ServiceBase):
                                             'meta.al_status:DEPLOYED OR '
                                             'meta.al_status:NOISY')
         self.use_riak_for_rules = self.cfg.get('USE_RIAK_FOR_RULES', False)
-        self.get_yara_externals = {"asl_%s" % i: i for i in config.system.yara.externals}
+        self.get_yara_externals = {"al_%s" % i: i for i in config.system.yara.externals}
         self.update_client = None
 
     def _add_resultinfo_for_match(self, result, match):

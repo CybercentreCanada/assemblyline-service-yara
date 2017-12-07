@@ -434,12 +434,12 @@ class Yara(ServiceBase):
             if not sval:
                 # Check metadata dictionary
                 smeta = self.task.metadata
-                if type(smeta) == dict:
+                if isinstance(smeta, dict):
                     sval = smeta.get(i, None)
             if not sval:
                 # Check params dictionary
                 smeta = self.task.params
-                if type(smeta) == dict:
+                if isinstance(smeta, dict):
                     sval = smeta.get(i, None)
             # Create dummy value if item not found
             if not sval:

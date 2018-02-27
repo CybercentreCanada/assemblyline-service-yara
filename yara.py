@@ -1,11 +1,11 @@
 from __future__ import absolute_import
 
+import hashlib
 import os
 import shutil
 import tempfile
 import threading
 
-from hashlib import md5
 from time import sleep
 
 from cStringIO import StringIO
@@ -107,7 +107,8 @@ class Yara(ServiceBase):
         "SIGNATURE_USER": 'user',
         "SIGNATURE_PASS": 'changeme',
         "SIGNATURE_URL": 'https://localhost:443',
-        "SIGNATURE_QUERY": 'meta.al_status:DEPLOYED OR meta.al_status:NOISY'
+        "SIGNATURE_QUERY": 'meta.al_status:DEPLOYED OR meta.al_status:NOISY',
+        "VERIFY": False
     }
     SERVICE_CPU_CORES = 0.5
     SERVICE_RAM_MB = 256
@@ -151,6 +152,7 @@ class Yara(ServiceBase):
                                             'meta.al_status:DEPLOYED OR '
                                             'meta.al_status:NOISY')
         self.use_riak_for_rules = self.cfg.get('USE_RIAK_FOR_RULES', False)
+        self.verify = self.cfg.get('VERIFY', False)
         self.get_yara_externals = {"al_%s" % i: i for i in config.system.yara.externals}
         self.update_client = None
 
@@ -341,7 +343,7 @@ class Yara(ServiceBase):
                     clean_data = sdata
 
             rules = yara.compile(rules_file, externals=self.get_yara_externals)
-            rules_md5 = md5(clean_data).hexdigest()
+            rules_md5 = hashlib.md5(clean_data).hexdigest()
             return last_update, rules, rules_md5
         except Exception as e:
             raise e
@@ -385,7 +387,14 @@ class Yara(ServiceBase):
         self.log.info("Starting Yara's rule updater...")
 
         if not self.update_client:
-            self.update_client = Client(self.signature_url, auth=(self.signature_user, self.signature_pass))
+            try:
+                # AL_Client 3.4+
+                self.update_client = Client(self.signature_url,
+                                            auth=(self.signature_user, self.signature_pass),
+                                            verify=self.verify)
+            except TypeError:
+                # AL_Client 3.3-
+                self.update_client = Client(self.signature_url, auth=(self.signature_user, self.signature_pass))
 
         if self.signature_cache.exists(self.rule_path):
             api_response = self.update_client.signature.update_available(self.last_update)
@@ -417,6 +426,7 @@ class Yara(ServiceBase):
                 self.rules = rules
                 self.rules_md5 = rules_md5
 
+    # noinspection PyBroadException
     def execute(self, request):
         if not self.rules:
             return
@@ -429,7 +439,7 @@ class Yara(ServiceBase):
             # Check default request.task fields
             try:
                 sval = self.task.get(i)
-            except:
+            except Exception:
                 sval = None
             if not sval:
                 # Check metadata dictionary

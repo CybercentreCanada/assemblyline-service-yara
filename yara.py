@@ -21,6 +21,8 @@ from assemblyline.al.service.base import ServiceBase, UpdaterFrequency
 
 from assemblyline_client import Client
 
+from assemblyline.al.install import SiteInstaller
+
 Classification = forge.get_classification()
 
 config = forge.get_config()
@@ -155,6 +157,7 @@ class Yara(ServiceBase):
         self.verify = self.cfg.get('VERIFY', False)
         self.get_yara_externals = {"al_%s" % i: i for i in config.system.yara.externals}
         self.update_client = None
+        self.yara_version = "3.7.0"
 
     def _add_resultinfo_for_match(self, result, match):
         almeta = YaraMetadata(match)
@@ -471,7 +474,13 @@ class Yara(ServiceBase):
                         # Fast mode == Yara skips strings already found
                         matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
                         self.counters[RULE_HITS] += len(matches)
-                        request.result = self._extract_result_from_matches(matches)
+                        result = self._extract_result_from_matches(matches)
+                        section = ResultSection(title_text="Service Warnings")
+                        section.add_line("Too many matches detected with current ruleset. "
+                                         "Yara forced to scan in fast mode.")
+                        request.result = result
+                        result.add_result(section)
+
                     except:
                         self.log.warning("Yara internal error 30 detected on submission {}" .format(self.task.sid))
                         section = ResultSection(title_text="Yara scan not completed.")
@@ -496,6 +505,11 @@ class Yara(ServiceBase):
             pass
 
     def start(self):
+        si = SiteInstaller()
+        if not si.check_version("yara-python", self.yara_version):
+            self.log.warning("Yara version out of date (requires {}). Reinstall yara service on worker(s) with "
+                             "/opt/al/assemblyline/al/install/reinstall_service.py Yara" .format(self.yara_version))
+
         force_rule_download = False
         # noinspection PyBroadException
         try:

@@ -463,15 +463,22 @@ class Yara(ServiceBase):
                 self.counters[RULE_HITS] += len(matches)
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
+                # Internal error 30 == exceeded max string matches on rule
                 if e.message != "internal error: 30":
                     raise
                 else:
-                    self.log.warning("Yara internal error 30 detected on submission {}" .format(self.task.sid))
-                    section = ResultSection(title_text="Yara scan not completed.")
-                    section.add_line("File returned too many matches with current rule set and Yara exited.")
-                    result = Result()
-                    request.result = result
-                    result.add_result(section)
+                    try:
+                        # Fast mode == Yara skips strings already found
+                        matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
+                        self.counters[RULE_HITS] += len(matches)
+                        request.result = self._extract_result_from_matches(matches)
+                    except:
+                        self.log.warning("Yara internal error 30 detected on submission {}" .format(self.task.sid))
+                        section = ResultSection(title_text="Yara scan not completed.")
+                        section.add_line("File returned too many matches with current rule set and Yara exited.")
+                        result = Result()
+                        request.result = result
+                        result.add_result(section)
 
     def get_service_version(self):
         basic_version = super(Yara, self).get_service_version()

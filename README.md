@@ -6,7 +6,7 @@ This Assemblyline service runs the Yara application against all file types.
 
 ## Execution
 
-Currently AL runs Yara 3.7.0, and therefore supports the following external modules:
+Currently AL runs Yara 3.8.1, and therefore supports the following external modules:
 
 * Dotnet
 * ELF
@@ -22,9 +22,9 @@ Currently AL runs Yara 3.7.0, and therefore supports the following external modu
  
  Rule creation:
  
- * https://yara.readthedocs.io/en/v3.5.0/ 
+ * https://yara.readthedocs.io/en/v3.8.1
  
- * https://[AL instance]/static/pdf/yara.pdf (Yara user manual Ver. 1.6)
+ * https://[AL instance]/static/pdf/yara.pdf
  
  MALWARE Standard:
  
@@ -43,10 +43,13 @@ The following are the default externals provided in AL:
  Additional conditions can be added in AL configuration under system.yara.externals. Please read reference manual
  for further information.
 
+
  **NOTE: AL custom conditions are meant to aid with large amounts of live data ingestion where the submission source, 
  filetype, etc. can be used to reduce false positives without disabling rules entirely.
  When creating Yara rules in AL with the above conditions, remember that there is no way to override
  these conditions**
+
+## Importing Rules
 
  YARA rules can be adjusted/imported/reviewed in the AL GUI available at https://[AL instance]/signatures.html 
  

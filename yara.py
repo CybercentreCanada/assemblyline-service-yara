@@ -157,7 +157,7 @@ class Yara(ServiceBase):
         self.verify = self.cfg.get('VERIFY', False)
         self.get_yara_externals = {"al_%s" % i: i for i in config.system.yara.externals}
         self.update_client = None
-        self.yara_version = "3.7.0"
+        self.yara_version = "3.8.1"
 
     def _add_resultinfo_for_match(self, result, match):
         almeta = YaraMetadata(match)

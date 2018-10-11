@@ -506,9 +506,13 @@ class Yara(ServiceBase):
 
     def start(self):
         si = SiteInstaller()
+
+        # Check yara version and set configuration flags
         if not si.check_version("yara-python", self.yara_version):
             self.log.warning("Yara version out of date (requires {}). Reinstall yara service on worker(s) with "
                              "/opt/al/assemblyline/al/install/reinstall_service.py Yara" .format(self.yara_version))
+        # Set the limits to 4 times the default
+        yara.set_config(max_strings_per_rule=40000, stack_size=65536)
 
         force_rule_download = False
         # noinspection PyBroadException

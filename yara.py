@@ -112,7 +112,7 @@ class Yara(ServiceBase):
         "SIGNATURE_QUERY": 'meta.al_status:DEPLOYED OR meta.al_status:NOISY',
         "VERIFY": False
     }
-    SERVICE_CPU_CORES = 0.5
+    SERVICE_CPU_CORES = 1
     SERVICE_RAM_MB = 256
 
     YARA_SCORE_MAP = {

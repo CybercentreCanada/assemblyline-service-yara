@@ -438,6 +438,7 @@ class Yara(ServiceBase):
         local_filename = request.download()
 
         yara_externals = {}
+        self.set_stage(1)
         for k, i in self.get_yara_externals.iteritems():
             # Check default request.task fields
             try:
@@ -462,8 +463,10 @@ class Yara(ServiceBase):
 
         with self.initialization_lock:
             try:
+                self.set_stage(2)
                 matches = self.rules.match(local_filename, externals=yara_externals)
                 self.counters[RULE_HITS] += len(matches)
+                self.set_stage(3)
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
                 # Internal error 30 == exceeded max string matches on rule
@@ -471,9 +474,11 @@ class Yara(ServiceBase):
                     raise
                 else:
                     try:
+                        self.set_stage(4)
                         # Fast mode == Yara skips strings already found
                         matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
                         self.counters[RULE_HITS] += len(matches)
+                        self.set_stage(5)
                         result = self._extract_result_from_matches(matches)
                         section = ResultSection(title_text="Service Warnings")
                         section.add_line("Too many matches detected with current ruleset. "

@@ -459,11 +459,10 @@ class Yara(ServiceBase):
             if not sval:
                 sval = i
 
-            if not isinstance(sval, str):
+            if not isinstance(sval, basestring):
                 error_message = "External of non string type found: {} = {} {}"
                 self.log.warning(error_message.format(k, sval, type(sval)))
-
-            yara_externals[k] = str(sval)
+                yara_externals[k] = str(sval)
 
         with self.initialization_lock:
             try:

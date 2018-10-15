@@ -13,6 +13,7 @@ from cStringIO import StringIO
 from assemblyline.common.exceptions import ConfigException
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.common.yara.YaraValidator import YaraValidator
+from assemblyline.common.charset import safe_str
 from assemblyline.al.common import forge
 from assemblyline.al.common.result import Result, ResultSection
 from assemblyline.al.common.result import TAG_TYPE, TAG_SCORE, TAG_USAGE, Tag
@@ -459,12 +460,8 @@ class Yara(ServiceBase):
             if not sval:
                 sval = i
 
-            if not isinstance(sval, basestring):
-                error_message = "External of non string type found: {} = {} {}"
-                self.log.warning(error_message.format(k, sval, type(sval)))
-                sval = str(sval)
-
-            yara_externals[k] = sval
+            # Normalize unicode with safe_str and make sure everything else is a string
+            yara_externals[k] = str(safe_str(sval))
 
         with self.initialization_lock:
             try:

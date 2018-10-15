@@ -459,14 +459,18 @@ class Yara(ServiceBase):
             if not sval:
                 sval = i
 
-            yara_externals[k] = sval
+            if not isinstance(sval, str):
+                error_message = "External of non string type found: {} = {} {}"
+                self.log.warning(error_message.format(k, sval, type(sval)))
+
+            yara_externals[k] = str(sval)
 
         with self.initialization_lock:
             try:
                 self.set_stage(2)
                 matches = self.rules.match(local_filename, externals=yara_externals)
-                self.counters[RULE_HITS] += len(matches)
                 self.set_stage(3)
+                self.counters[RULE_HITS] += len(matches)
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
                 # Internal error 30 == exceeded max string matches on rule
@@ -477,8 +481,8 @@ class Yara(ServiceBase):
                         self.set_stage(4)
                         # Fast mode == Yara skips strings already found
                         matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
-                        self.counters[RULE_HITS] += len(matches)
                         self.set_stage(5)
+                        self.counters[RULE_HITS] += len(matches)
                         result = self._extract_result_from_matches(matches)
                         section = ResultSection(title_text="Service Warnings")
                         section.add_line("Too many matches detected with current ruleset. "

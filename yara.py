@@ -13,6 +13,7 @@ from cStringIO import StringIO
 from assemblyline.common.exceptions import ConfigException
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.common.yara.YaraValidator import YaraValidator
+from assemblyline.common.charset import safe_str
 from assemblyline.al.common import forge
 from assemblyline.al.common.result import Result, ResultSection
 from assemblyline.al.common.result import TAG_TYPE, TAG_SCORE, TAG_USAGE, Tag
@@ -438,6 +439,7 @@ class Yara(ServiceBase):
         local_filename = request.download()
 
         yara_externals = {}
+        self.set_stage(1)
         for k, i in self.get_yara_externals.iteritems():
             # Check default request.task fields
             try:
@@ -458,11 +460,14 @@ class Yara(ServiceBase):
             if not sval:
                 sval = i
 
-            yara_externals[k] = sval
+            # Normalize unicode with safe_str and make sure everything else is a string
+            yara_externals[k] = str(safe_str(sval))
 
         with self.initialization_lock:
             try:
+                self.set_stage(2)
                 matches = self.rules.match(local_filename, externals=yara_externals)
+                self.set_stage(3)
                 self.counters[RULE_HITS] += len(matches)
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
@@ -471,8 +476,10 @@ class Yara(ServiceBase):
                     raise
                 else:
                     try:
+                        self.set_stage(4)
                         # Fast mode == Yara skips strings already found
                         matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
+                        self.set_stage(5)
                         self.counters[RULE_HITS] += len(matches)
                         result = self._extract_result_from_matches(matches)
                         section = ResultSection(title_text="Service Warnings")

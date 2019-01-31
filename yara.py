@@ -161,6 +161,16 @@ class Yara(ServiceBase):
         self.yara_version = "3.8.1"
 
     def _add_resultinfo_for_match(self, result, match):
+        """Parse from Yara signature match and add information to the overall AL service result. This module determines
+        result score and identifies any AL tags that should be added (i.e. IMPLANT_NAME, THREAT_ACTOR, etc.).
+
+        Args:
+            result: AL ResultSection object.
+            match: Yara rules Match object item.
+
+        Returns:
+            None.
+        """
         almeta = YaraMetadata(match)
         self._normalize_metadata(almeta)
 
@@ -245,6 +255,15 @@ class Yara(ServiceBase):
         result.order_results_by_score()
 
     def _add_string_match_data(self, match, section):
+        """Parses and adds matching strings from a Yara match object to an AL ResultSection.
+
+        Args:
+            match: Yara match object.
+            section: AL ResultSection object.
+
+        Returns:
+            None.
+        """
         strings = match.strings
         string_dict = {}
         for offset, identifier, data in strings:
@@ -311,6 +330,15 @@ class Yara(ServiceBase):
                     entry_name, more, 's' if more > 1 else ''))
 
     def _compile_rules(self, rules_txt):
+        """Saves Yara rule content to file, validates the content with Yara Validator, and uses Yara python to compile
+        the rule set.
+
+        Args:
+            rules_txt: Yara rule file content.
+
+        Returns:
+            Last update time, compiled rules, compiled rules md5.
+        """
         tmp_dir = tempfile.mkdtemp(dir='/tmp')
         try:
             # Extract the first line of the rules which should look like this:
@@ -355,6 +383,14 @@ class Yara(ServiceBase):
             shutil.rmtree(tmp_dir)
 
     def _extract_result_from_matches(self, matches):
+        """Iterate through Yara match object and send to parser.
+
+        Args:
+            matches: Yara rules Match object (list).
+
+        Returns:
+            AL Result object.
+        """
         result = Result(default_usage=TAG_USAGE.CORRELATION)
         for match in matches:
             self._add_resultinfo_for_match(result, match)
@@ -362,6 +398,14 @@ class Yara(ServiceBase):
 
     @staticmethod
     def _get_non_wide_char(string):
+        """Convert wide string to regular string.
+
+        Args:
+            string: Wide-character string to convert.
+
+        Returns:
+            Converted string.
+        """
         res = []
         for (i, c) in enumerate(string):
             if i % 2 == 0:
@@ -371,6 +415,14 @@ class Yara(ServiceBase):
 
     @staticmethod
     def _is_wide_char(string):
+        """Determine if string is a wide-character string.
+
+        Args:
+            string: Potential wide-character string.
+
+        Returns:
+            True if wide character, or False.
+        """
         if len(string) >= 2 and len(string) % 2 == 0:
             is_wide_char = True
             for (i, c) in enumerate(string):
@@ -385,9 +437,13 @@ class Yara(ServiceBase):
 
     @staticmethod
     def _normalize_metadata(almeta):
+        """Convert classification to uppercase."""
         almeta.classification = almeta.classification.upper()
 
     def _update_rules(self, **_):
+        """Update yara rules file. This module will use the AL client to see if the signature set in datastore has been
+        modified since self.last_update. If there is an update available, the new signature set will be downloaded
+        and saved to a new rules cache file."""
         self.log.info("Starting Yara's rule updater...")
 
         if not self.update_client:
@@ -432,6 +488,7 @@ class Yara(ServiceBase):
 
     # noinspection PyBroadException
     def execute(self, request):
+        """Main Module. See README for details."""
         if not self.rules:
             return
 

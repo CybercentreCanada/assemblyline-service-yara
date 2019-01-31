@@ -4,6 +4,28 @@ This Assemblyline service runs the Yara application against all file types.
 
 **NOTE**: This service does not require you to buy any licence and is preinstalled and working after a default installation
 
+## Service Configuration
+
+Configurations of the service are contained within the
+'SERVICE_DEFAULT_CONFIG' class variable. Each of these additional
+configurations are explained below:
+
+
+```
+    SERVICE_DEFAULT_CONFIG = {
+        **"USE_RIAK_FOR_RULES": True,                         # Store rules in AL datastore.
+        **"RULE_PATH": 'rules.yar',                           # File path where cached rule file is stored/path of signature file when USE_RIAK_FOR_RULES is False.
+        **"SIGNATURE_USER": 'user',                           # Datastore username to access signatures.
+        **"SIGNATURE_PASS": 'changeme',                       # Datastore password to access signatures.
+        "SIGNATURE_URL": 'https://localhost:443',             # AL server containing signatures. i.e. A staging instance of AL can be point to a production instance, so that signatures are stored only in one place.
+        "SIGNATURE_QUERY": 'meta.al_status:DEPLOYED OR        # Signature filter when using AL datastore for ruleset. i.e. Add 'OR meta.al_status:STAGING' for your AL staging instance to test new signatures.
+                            meta.al_status:NOISY',
+        "VERIFY": False                                       # True if SSL connection to SIGNATURE_URL should be verified.
+    }
+** Setup at system installation and should only be changed with unique signature storage solution.
+```
+
+
 ## Execution
 
 Currently AL runs Yara 3.8.1, and therefore supports the following external modules:

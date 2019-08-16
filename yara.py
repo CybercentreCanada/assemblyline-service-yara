@@ -35,25 +35,15 @@ class YaraMetadata(object):
         self.rule_name = match.rule
         self.rule_id = match.meta.get('id', None)
         self.rule_group = match.meta.get('rule_group', None)
-        if not self.rule_group:
-            category = match.meta.get('category', None)
-            category = category.lower() if category else category
-            self.rule_group = 'implant' if category == 'malware' else category
-        self.rule_version = match.meta.get('rule_version', None)
-        if not self.rule_version:
-            self.rule_version = match.meta.get('version', 1)
+        self.rule_version = match.meta.get('rule_version', 1)
         self.description = match.meta.get('description', None)
-        self.classification = match.meta.get('classification',None)
-        if not self.classification:
-            self.classification = match.meta.get('sharing',
-                                                 Classification.UNRESTRICTED)
+        self.classification = match.meta.get('classification',
+                                             Classification.UNRESTRICTED)
         self.organisation = meta.get('organisation', None)
         self.summary = meta.get('summary', None)
         self.description = meta.get('description', None)
         self.score_override = meta.get('al_score', None)
         self.poc = meta.get('poc', None)
-        if not self.poc:
-            self.poc = meta.get('author', None)
         self.weight = meta.get('weight', 0)  # legacy rule format
         self.al_status = meta.get('al_status', "DEPLOYED")
 
@@ -68,15 +58,14 @@ class YaraMetadata(object):
 
         # parse and populate implant list
         self.implants = []
-        for implant_malware in ['implant', 'malware']:
-            for implant in match.meta.get(implant_malware, '').split(','):
-                if not implant:
-                    continue
-                tokens = implant.split(':')
-                implant_name = tokens[0]
-                implant_family = tokens[1] if (len(tokens) == 2) else ''
-                self.implants.append((implant_name.strip().upper(),
-                                      implant_family.strip().upper()))
+        for implant in match.meta.get('implant', '').split(','):
+            if not implant:
+                continue
+            tokens = implant.split(':')
+            implant_name = tokens[0]
+            implant_family = tokens[1] if (len(tokens) == 2) else ''
+            self.implants.append((implant_name.strip().upper(),
+                                  implant_family.strip().upper()))
 
         # parse and populate technique info
         self.techniques = []

@@ -57,17 +57,12 @@ class YaraMetadata(object):
         self.weight = meta.get('weight', 0)  # legacy rule format
         self.al_status = meta.get('al_status', "DEPLOYED")
 
-        self.actor_type = meta.get('actor_type', None)
-        if not self.actor_type:
-            self.actor_type = meta.get('ta_type', None)
+        self.ta_type = meta.get('ta_type', None)
 
         def _safe_split(comma_sep_list):
             return [e for e in comma_sep_list.split(',') if e]
 
         self.actors = _safe_split(match.meta.get('used_by', ''))
-        if not self.actors:
-            self.actors = _safe_split(match.meta.get('actor', ''))
-
         self.summary = _safe_split(match.meta.get('summary', ''))
         self.exploits = _safe_split(match.meta.get('exploit', ''))
 
@@ -208,8 +203,8 @@ class Yara(ServiceBase):
                               usage=TAG_USAGE.IDENTIFICATION))
         title_elements = [match.rule, ]
 
-        if almeta.actor_type:
-            result.append_tag(Tag(TAG_TYPE.THREAT_ACTOR, almeta.actor_type, TAG_SCORE.NULL,
+        if almeta.ta_type:
+            result.append_tag(Tag(TAG_TYPE.THREAT_ACTOR, almeta.ta_type, TAG_SCORE.NULL,
                                   classification=almeta.classification, usage=TAG_USAGE.IDENTIFICATION))
 
         # Implant Tags.

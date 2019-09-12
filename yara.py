@@ -47,6 +47,8 @@ class YaraMetadata(object):
         self.weight = meta.get('weight', 0)  # legacy rule format
         self.al_status = meta.get('al_status', "DEPLOYED")
 
+        self.ta_type = meta.get('ta_type', None)
+
         def _safe_split(comma_sep_list):
             return [e for e in comma_sep_list.split(',') if e]
 
@@ -189,6 +191,10 @@ class Yara(ServiceBase):
         result.append_tag(Tag(TAG_TYPE.FILE_YARA_RULE, match.rule, TAG_SCORE.SURE, classification=almeta.classification,
                               usage=TAG_USAGE.IDENTIFICATION))
         title_elements = [match.rule, ]
+
+        if almeta.ta_type:
+            result.append_tag(Tag(TAG_TYPE.THREAT_ACTOR, almeta.ta_type, TAG_SCORE.NULL,
+                                  classification=almeta.classification, usage=TAG_USAGE.IDENTIFICATION))
 
         # Implant Tags.
         implant_title_elements = []

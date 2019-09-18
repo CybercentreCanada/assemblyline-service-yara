@@ -1,0 +1,35 @@
+name: APKaye
+version: 1
+description: >-
+  This services runs all DEPLOYED and NOISY signatures on submitted files. NOISY rules
+  are reported but do not influence the score. DEPLOYED rules score according to their
+  rule group (implant => 1000 | exploit & tool => 500 | technique => 100 | info => 0).
+
+accepts: android/apk
+rejects: empty|metadata/.*
+
+stage: CORE
+category: Static Analysis
+
+file_required: true
+timeout: 60
+disable_cache: false
+
+enabled: true
+is_external: false
+licence_count: 0
+supported_platforms: [linux]
+
+config:
+  rule_path: rules.yar
+  signature_query: meta.al_status:DEPLOYED OR meta.al_status:NOISY
+  verify: false
+
+submission_params:
+  - default: false
+    name: resubmit_apk_as_jar
+    type: bool
+    value: false
+
+update_config:
+  generates_signatures: true

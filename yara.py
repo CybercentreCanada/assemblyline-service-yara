@@ -1,27 +1,22 @@
-from __future__ import absolute_import
+# from __future__ import absolute_import
 
 import hashlib
 import os
 import shutil
 import tempfile
 import threading
-from time import sleep
+from io import StringIO
 
+import yara
 from assemblyline.al.common.transport.local import TransportLocal
-from assemblyline.al.install import SiteInstaller
 from assemblyline.common.yara.YaraValidator import YaraValidator
 from assemblyline_client import Client
-from cStringIO import StringIO
 
 from assemblyline.common.exceptions import ConfigException
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Result, ResultSection
-
-# Classification = forge.get_classification()
-
-# config = forge.get_config()
 
 
 class YaraMetadata(object):
@@ -89,27 +84,9 @@ class YaraMetadata(object):
 
 NUM_RULES = 'yara.num_rules'
 RULE_HITS = 'yara.total_rule_hits'
-USING_RIAK = 'yara.using_riak_for_rules'
 
 
 class Yara(ServiceBase):
-    SERVICE_CATEGORY = 'Static Analysis'
-    SERVICE_DESCRIPTION = "This services runs all DEPLOYED and NOISY signatures on submitted files. NOISY rules " \
-                          "are reported but do not influence the score. DEPLOYED rules score according to their " \
-                          "rule group (implant => 1000 | exploit & tool => 500 | technique => 100 | info => 0)."
-    SERVICE_ENABLED = True
-    SERVICE_VERSION = '1'
-    SERVICE_DEFAULT_CONFIG = {
-        "USE_RIAK_FOR_RULES": True,
-        "RULE_PATH": 'rules.yar',
-        "SIGNATURE_USER": 'user',
-        "SIGNATURE_PASS": 'changeme',
-        "SIGNATURE_URL": 'https://localhost:443',
-        "SIGNATURE_QUERY": 'meta.al_status:DEPLOYED OR meta.al_status:NOISY',
-        "VERIFY": False
-    }
-    SERVICE_CPU_CORES = 1
-    SERVICE_RAM_MB = 256
 
     YARA_SCORE_MAP = {
         'implant': 1000,
@@ -149,7 +126,6 @@ class Yara(ServiceBase):
         self.signature_query = self.config.get('SIGNATURE_QUERY',
                                                'meta.al_status:DEPLOYED OR '
                                                'meta.al_status:NOISY')
-        self.use_riak_for_rules = self.config.get('USE_RIAK_FOR_RULES', False)
         self.verify = self.config.get('VERIFY', False)
         self.get_yara_externals = {"al_%s" % i: i for i in config.system.yara.externals}
         self.update_client = None
@@ -190,7 +166,7 @@ class Yara(ServiceBase):
             result.append_tag(Tag(TAG_TYPE.THREAT_ACTOR, almeta.ta_type,
                                   classification=almeta.classification, usage=TAG_USAGE.IDENTIFICATION))
 
-        # Implant Tags.
+        # Implant Tags
         implant_title_elements = []
         for (implant_name, implant_family) in almeta.implants:
             if implant_name:
@@ -202,7 +178,7 @@ class Yara(ServiceBase):
                 result.append_tag(
                     Tag(TAG_TYPE.IMPLANT_FAMILY, implant_family, classification=almeta.classification))
         if implant_title_elements:
-            title_elements.append('implant: %s' % ','.join(implant_title_elements))
+            title_elements.append(f"implant: {','.join(implant_title_elements)}")
 
         # Threat Actor metadata.
         for actor in almeta.actors:
@@ -211,7 +187,7 @@ class Yara(ServiceBase):
 
         # Exploit / CVE metadata.
         if almeta.exploits:
-            title_elements.append(" [Exploits(s): %s] " % ",".join(almeta.exploits))
+            title_elements.append(f" [Exploits(s): {','.join(almeta.exploits)}] ")
         for exploit in almeta.exploits:
             result.append_tag(Tag(TAG_TYPE.EXPLOIT_NAME, exploit, classification=almeta.classification))
 
@@ -235,7 +211,7 @@ class Yara(ServiceBase):
                                       usage=TAG_USAGE.IDENTIFICATION))
 
         if summary_elements:
-            title_elements.append(' (Summary: %s)' % ", ".join(summary_elements))
+            title_elements.append(f" (Summary: {', '.join(summary_elements)})")
         for element in summary_elements:
             result.append_tag(Tag(TAG_TYPE.FILE_SUMMARY, element, classification=almeta.classification,
                                   usage=TAG_USAGE.IDENTIFICATION))
@@ -244,10 +220,10 @@ class Yara(ServiceBase):
         section = ResultSection(title_text=title, score=score, classification=almeta.classification)
 
         if almeta.rule_id and almeta.rule_version and almeta.poc:
-            section.add_line('Rule Info : %s r.%s by %s' % (almeta.rule_id, almeta.rule_version, almeta.poc))
+            section.add_line(f"Rule Info : {almeta.rule_id} r.{almeta.rule_version} by {almeta.poc}")
 
         if almeta.description:
-            section.add_line('Description: %s' % almeta.description)
+            section.add_line(f"Description: {almeta.description}")
 
         self._add_string_match_data(match, section)
 
@@ -283,7 +259,7 @@ class Yara(ServiceBase):
             if ident == '$':
                 string_name = ""
             else:
-                string_name = "%s " % ident[1:]
+                string_name = f"{ident[1:]} "
 
             string_offset = ", ".join(string_offset_list)
             if len(string_list) > 5:
@@ -295,7 +271,7 @@ class Yara(ServiceBase):
 
             string_value = repr(string_value)
             if len(string_value) > 100:
-                string_value = "%s..." % string_value[:100]
+                string_value = f"{string_value[:100]}..."
 
             wide_str = ""
             if is_wide_char:
@@ -374,7 +350,8 @@ class Yara(ServiceBase):
             shutil.rmtree(tmp_dir)
 
     def _extract_result_from_matches(self, matches):
-        """Iterate through Yara match object and send to parser.
+        """
+        Iterate through Yara match object and send to parser.
 
         Args:
             matches: Yara rules Match object (list).
@@ -458,14 +435,14 @@ class Yara(ServiceBase):
                 self.log.info("No update available. Stopping...")
                 return
 
-        self.log.info("Downloading signatures with query: %s (%s)" % (self.signature_query, str(self.last_update)))
+        self.log.info(f"Downloading signatures with query: {self.signature_query} ({str(self.last_update)})")
 
         signature_data = StringIO()
         self.update_client.signature.download(output=signature_data, query=self.signature_query, safe=True)
 
         rules_txt = signature_data.getvalue()
         if not rules_txt:
-            errormsg = "No rules to compile:\n%s" % rules_txt
+            errormsg = f"No rules to compile:\n{rules_txt}"
             self.log.error("{}/api/v3/signature/download/?query={} - {}:{}".format(
                 self.signature_url, self.signature_query, self.signature_user, self.signature_pass)
             )
@@ -491,7 +468,6 @@ class Yara(ServiceBase):
         local_filename = request.file_path
 
         yara_externals = {}
-        self.set_stage(1)
         for k, i in self.get_yara_externals.items():
             # Check default request.task fields
             try:
@@ -517,9 +493,7 @@ class Yara(ServiceBase):
 
         with self.initialization_lock:
             try:
-                self.set_stage(2)
                 matches = self.rules.match(local_filename, externals=yara_externals)
-                self.set_stage(3)
                 self.counters[RULE_HITS] += len(matches)
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
@@ -528,10 +502,8 @@ class Yara(ServiceBase):
                     raise
                 else:
                     try:
-                        self.set_stage(4)
                         # Fast mode == Yara skips strings already found
                         matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
-                        self.set_stage(5)
                         self.counters[RULE_HITS] += len(matches)
                         result = self._extract_result_from_matches(matches)
                         section = ResultSection(title_text="Service Warnings")
@@ -552,19 +524,7 @@ class Yara(ServiceBase):
         basic_version = super(Yara, self).get_service_version()
         return f'{basic_version}.r{self.rules_md5 or "0"}'
 
-    # noinspection PyGlobalUndefined,PyUnresolvedReferences
-    def import_service_deps(self):
-        global yara
-        import yara
-
-        try:
-            requests.packages.urllib3.disable_warnings()
-        except:
-            pass
-
     def start(self):
-        si = SiteInstaller()
-
         # Check yara version and set configuration flags
         if not si.check_version("yara-python", self.yara_version):
             self.log.warning("Yara version out of date (requires {}). Reinstall yara service on worker(s) with "
@@ -573,29 +533,21 @@ class Yara(ServiceBase):
         yara.set_config(max_strings_per_rule=40000, stack_size=65536)
 
         force_rule_download = False
-        # noinspection PyBroadException
         try:
             # Even if we are using riak for rules we may have a saved copy
             # of the rules. Try to load and compile them first.
             self.signature_cache.makedirs(os.path.dirname(self.rule_path))
             rules_txt = self.signature_cache.get(self.rule_path)
             if rules_txt:
-                self.log.info("Yara loaded rules from cached file: %s", self.rule_path)
+                self.log.info(f"Yara loaded rules from cached file: {self.rule_path}")
                 self.last_update, self.rules, self.rules_md5 = \
                     self._compile_rules(rules_txt)
             else:
                 self.log.info("No cached Yara rules found.")
                 force_rule_download = True
 
-        except Exception as e:  # pylint: disable=W0702
-            if not self.use_riak_for_rules:
-                sleep(30)  # Try and avoid flailing.
-                raise
+        except Exception as e:
             self.log.warning(f"Something went wrong while trying to load cached rules: {e}")
             force_rule_download = True
-
-        if self.use_riak_for_rules:
-            self._register_update_callback(self._update_rules, execute_now=force_rule_download,
-                                           freq=UpdaterFrequency.MINUTE)
 
         self.log.info(f"Yara started with service version: {self.get_service_version()}")

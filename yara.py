@@ -98,15 +98,15 @@ class Yara(ServiceBase):
 
     TYPE = 0
     DESCRIPTION = 1
-    TECHNIQUE_DESCRIPTORS = {
-        'shellcode': (TAG_TYPE.TECHNIQUE_SHELLCODE, 'Embedded shellcode'),
-        'packer': (TAG_TYPE.TECHNIQUE_PACKER, 'Packed PE'),
-        'cryptography': (TAG_TYPE.TECHNIQUE_CRYPTO, 'Uses cryptography/compression'),
-        'obfuscation': (TAG_TYPE.TECHNIQUE_OBFUSCATION, 'Obfuscated'),
-        'keylogger': (TAG_TYPE.TECHNIQUE_KEYLOGGER, 'Keylogging capability'),
-        'comms_routine': (TAG_TYPE.TECHNIQUE_COMMS_ROUTINE, 'Does external comms'),
-        'persistance': (TAG_TYPE.TECHNIQUE_PERSISTENCE, 'Has persistence'),
-    }
+    TECHNIQUE_DESCRIPTORS = dict(
+        shellcode=('technique.shellcode', 'Embedded shellcode'),
+        packer=('technique.packer', 'Packed PE'),
+        cryptography=('technique.crypto', 'Uses cryptography/compression'),
+        obfuscation=('technique.obfuscation', 'Obfuscated'),
+        keylogger=('technique.keylogger', 'Keylogging capability'),
+        comms_routine=('technique.comms_routine', 'Does external comms'),
+        persistance=('technique.persistence', 'Has persistence'),
+    )
 
     def __init__(self, config=None):
         super(Yara, self).__init__(config)
@@ -131,7 +131,7 @@ class Yara(ServiceBase):
         self.update_client = None
         self.yara_version = "3.8.1"
 
-    def _add_resultinfo_for_match(self, result, match):
+    def _add_resultinfo_for_match(self, result: Result, match):
         """
         Parse from Yara signature match and add information to the overall AL service result. This module determines
         result score and identifies any AL tags that should be added (i.e. IMPLANT_NAME, THREAT_ACTOR, etc.).
@@ -158,66 +158,61 @@ class Yara(ServiceBase):
         if almeta.score_override is not None:
             score = int(almeta.score_override)
 
-        result.append_tag(Tag(TAG_TYPE.FILE_YARA_RULE, match.rule, classification=almeta.classification,
-                              usage=TAG_USAGE.IDENTIFICATION))
+        section = ResultSection('', score=score, classification=almeta.classification)
+
+        section.add_tag('file.rule.yara', match.rule)
+
         title_elements = [match.rule, ]
 
         if almeta.ta_type:
-            result.append_tag(Tag(TAG_TYPE.THREAT_ACTOR, almeta.ta_type,
-                                  classification=almeta.classification, usage=TAG_USAGE.IDENTIFICATION))
+            section.add_tag('attribution.actor', almeta.ta_type)
 
         # Implant Tags
         implant_title_elements = []
         for (implant_name, implant_family) in almeta.implants:
             if implant_name:
                 implant_title_elements.append(implant_name)
-                result.append_tag(
-                    Tag(TAG_TYPE.IMPLANT_NAME, implant_name, classification=almeta.classification))
+                section.add_tag('attribution.implant', implant_name)
             if implant_family:
                 implant_title_elements.append(implant_family)
-                result.append_tag(
-                    Tag(TAG_TYPE.IMPLANT_FAMILY, implant_family, classification=almeta.classification))
+                section.add_tag('attribution.family', implant_family)
         if implant_title_elements:
             title_elements.append(f"implant: {','.join(implant_title_elements)}")
 
-        # Threat Actor metadata.
+        # Threat Actor metadata
         for actor in almeta.actors:
             title_elements.append(actor)
-            result.append_tag(Tag(TAG_TYPE.THREAT_ACTOR, actor, classification=almeta.classification))
+            section.add_tag('attribution.actor', actor)
 
-        # Exploit / CVE metadata.
+        # Exploit / CVE metadata
         if almeta.exploits:
             title_elements.append(f" [Exploits(s): {','.join(almeta.exploits)}] ")
         for exploit in almeta.exploits:
-            result.append_tag(Tag(TAG_TYPE.EXPLOIT_NAME, exploit, classification=almeta.classification))
+            section.add_tag('attribution.exploit', exploit)
 
-        # Include technique descriptions in the section summary.
+        # Include technique descriptions in the section summary
         summary_elements = set()
         for (category, name) in almeta.techniques:
             descriptor = self.TECHNIQUE_DESCRIPTORS.get(category, None)
             if not descriptor:
                 continue
-            tech_type, tech_description = descriptor
-            result.append_tag(Tag(tech_type, name, classification=almeta.classification))
-            summary_elements.add(tech_description)
+            technique_type, technique_description = descriptor
+            section.add_tag(technique_type, name)
+            summary_elements.add(technique_description)
 
         for (category, value) in almeta.info:
             if category == 'compiler':
-                result.append_tag(
-                    Tag(TAG_TYPE.INFO_COMPILER, value, classification=almeta.classification,
-                        usage=TAG_USAGE.IDENTIFICATION))
+                section.add_tag('file.compiler', value)
             elif category == 'libs':
-                result.append_tag(Tag(TAG_TYPE.INFO_LIBS, value, classification=almeta.classification,
-                                      usage=TAG_USAGE.IDENTIFICATION))
+                section.add_tag('file.lib', value)
 
         if summary_elements:
             title_elements.append(f" (Summary: {', '.join(summary_elements)})")
         for element in summary_elements:
-            result.append_tag(Tag(TAG_TYPE.FILE_SUMMARY, element, classification=almeta.classification,
-                                  usage=TAG_USAGE.IDENTIFICATION))
+            section.add_tag('file.behavior', element)
 
         title = " ".join(title_elements)
-        section = ResultSection(title_text=title, score=score, classification=almeta.classification)
+        section.title_text = title
 
         if almeta.rule_id and almeta.rule_version and almeta.poc:
             section.add_line(f"Rule Info : {almeta.rule_id} r.{almeta.rule_version} by {almeta.poc}")
@@ -228,7 +223,7 @@ class Yara(ServiceBase):
         self._add_string_match_data(match, section)
 
         result.add_section(section)
-        result.order_results_by_score()
+        # result.order_results_by_score() TODO: should v4 support this?
 
     def _add_string_match_data(self, match, section: ResultSection) -> None:
         """
@@ -359,7 +354,7 @@ class Yara(ServiceBase):
         Returns:
             AL Result object.
         """
-        result = Result(default_usage=TAG_USAGE.CORRELATION)
+        result = Result()
         for match in matches:
             self._add_resultinfo_for_match(result, match)
         return result
@@ -525,11 +520,7 @@ class Yara(ServiceBase):
         return f'{basic_version}.r{self.rules_md5 or "0"}'
 
     def start(self):
-        # Check yara version and set configuration flags
-        if not si.check_version("yara-python", self.yara_version):
-            self.log.warning("Yara version out of date (requires {}). Reinstall yara service on worker(s) with "
-                             "/opt/al/assemblyline/al/install/reinstall_service.py Yara" .format(self.yara_version))
-        # Set the limits to 4 times the default
+        # Set configuration flags to 4 times the default
         yara.set_config(max_strings_per_rule=40000, stack_size=65536)
 
         force_rule_download = False

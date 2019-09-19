@@ -25,11 +25,43 @@ config:
   signature_query: meta.al_status:DEPLOYED OR meta.al_status:NOISY
   verify: false
 
-submission_params:
-  - default: false
-    name: resubmit_apk_as_jar
-    type: bool
-    value: false
+submission_params: []
+
+heuristics:
+  - heur_id: 1
+    name: Implant
+    score: 1000
+    filetype: *
+    description: Yara rule - Implant group
+
+  - heur_id: 2
+    name: Tool
+    score: 500
+    filetype: *
+    description: Yara rule - Tool group
+
+  - heur_id: 3
+    name: Exploit
+    score: 500
+    filetype: *
+    description: Yara rule - Exploit group
+
+  - heur_id: 4
+    name: Technique
+    score: 100
+    filetype: *
+    description: Yara rule - Technique group
+
+  - heur_id: 5
+    name: Info
+    score: 0
+    filetype: *
+    description: Yara rule - Info group
+
+docker_config:
+  image: cccs/assemblyline-service-yara:latest
+  cpu_cores: 1.0
+  ram_mb: 256
 
 update_config:
   generates_signatures: true

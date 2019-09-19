@@ -87,17 +87,6 @@ RULE_HITS = 'yara.total_rule_hits'
 
 
 class Yara(ServiceBase):
-
-    YARA_SCORE_MAP = {
-        'implant': 1000,
-        'tool': 500,
-        'exploit': 500,
-        'technique': 100,
-        'info': 0,
-    }
-
-    TYPE = 0
-    DESCRIPTION = 1
     TECHNIQUE_DESCRIPTORS = dict(
         shellcode=('technique.shellcode', 'Embedded shellcode'),
         packer=('technique.packer', 'Packed PE'),
@@ -120,12 +109,7 @@ class Yara(ServiceBase):
         self.task = None
 
         self.rule_path = self.config.get('RULE_PATH', 'rules.yar')
-        self.signature_user = self.config.get('SIGNATURE_USER')
-        self.signature_pass = self.config.get('SIGNATURE_PASS')
-        self.signature_url = self.config.get('SIGNATURE_URL', 'https://localhost:443')
-        self.signature_query = self.config.get('SIGNATURE_QUERY',
-                                               'meta.al_status:DEPLOYED OR '
-                                               'meta.al_status:NOISY')
+        self.signature_query = self.config.get('SIGNATURE_QUERY', 'meta.al_status:DEPLOYED OR meta.al_status:NOISY')
         self.verify = self.config.get('VERIFY', False)
         self.get_yara_externals = {"al_%s" % i: i for i in config.system.yara.externals}
         self.update_client = None
@@ -194,11 +178,10 @@ class Yara(ServiceBase):
         summary_elements = set()
         for (category, name) in almeta.techniques:
             descriptor = self.TECHNIQUE_DESCRIPTORS.get(category, None)
-            if not descriptor:
-                continue
-            technique_type, technique_description = descriptor
-            section.add_tag(technique_type, name)
-            summary_elements.add(technique_description)
+            if descriptor:
+                technique_type, technique_description = descriptor
+                section.add_tag(technique_type, name)
+                summary_elements.add(technique_description)
 
         for (category, value) in almeta.info:
             if category == 'compiler':
@@ -413,16 +396,6 @@ class Yara(ServiceBase):
         """
         self.log.info("Starting Yara's rule updater...")
 
-        if not self.update_client:
-            try:
-                # AL_Client 3.4+
-                self.update_client = Client(self.signature_url,
-                                            auth=(self.signature_user, self.signature_pass),
-                                            verify=self.verify)
-            except TypeError:
-                # AL_Client 3.3-
-                self.update_client = Client(self.signature_url, auth=(self.signature_user, self.signature_pass))
-
         if self.signature_cache.exists(self.rule_path):
             api_response = self.update_client.signature.update_available(self.last_update)
             update_available = api_response.get('update_available', False)
@@ -489,7 +462,6 @@ class Yara(ServiceBase):
         with self.initialization_lock:
             try:
                 matches = self.rules.match(local_filename, externals=yara_externals)
-                self.counters[RULE_HITS] += len(matches)
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
                 # Internal error 30 == exceeded max string matches on rule
@@ -499,21 +471,18 @@ class Yara(ServiceBase):
                     try:
                         # Fast mode == Yara skips strings already found
                         matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
-                        self.counters[RULE_HITS] += len(matches)
                         result = self._extract_result_from_matches(matches)
-                        section = ResultSection(title_text="Service Warnings")
+                        section = ResultSection("Service Warnings")
                         section.add_line("Too many matches detected with current ruleset. "
                                          "Yara forced to scan in fast mode.")
                         request.result = result
-                        result.add_result(section)
-
                     except:
                         self.log.warning(f"Yara internal error 30 detected on submission {self.task.sid}")
-                        section = ResultSection(title_text="Yara scan not completed.")
-                        section.add_line("File returned too many matches with current rule set and Yara exited.")
                         result = Result()
+                        section = ResultSection("Yara scan not completed.")
+                        section.add_line("File returned too many matches with current rule set and Yara exited.")
+                        result.add_section(section)
                         request.result = result
-                        result.add_result(section)
 
     def get_service_version(self):
         basic_version = super(Yara, self).get_service_version()

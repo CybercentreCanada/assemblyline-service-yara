@@ -1,22 +1,16 @@
 # from __future__ import absolute_import
 
-import hashlib
 import os
-import shutil
-import tempfile
 import threading
-from io import StringIO
 
 import yara
-from assemblyline.al.common.transport.local import TransportLocal
-from assemblyline.common.yara.YaraValidator import YaraValidator
-from assemblyline_client import Client
 
-from assemblyline.common.exceptions import ConfigException
-from assemblyline.common.isotime import now_as_iso
+from assemblyline.common import forge
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Result, ResultSection
+
+Classification = forge.get_classification()
 
 
 class YaraMetadata(object):
@@ -97,15 +91,19 @@ class Yara(ServiceBase):
         persistance=('technique.persistence', 'Has persistence'),
     )
 
+    YARA_HEURISTICS_MAP = dict(
+        info=1,
+        technique=2,
+        exploit=3,
+        tool=4,
+        implant=5,
+    )
+
     def __init__(self, config=None):
         super(Yara, self).__init__(config)
-        self.last_update = "1970-01-01T00:00:00.000000Z"
         self.rules = None
         self.rules_md5 = None
         self.initialization_lock = threading.RLock()
-        self.signature_cache = TransportLocal(
-            base=os.path.join(config.system.root, 'var', 'cache', 'signatures')
-        )
         self.task = None
 
         self.rule_path = self.config.get('RULE_PATH', 'rules.yar')
@@ -133,17 +131,8 @@ class Yara(ServiceBase):
         if not self.task.deep_scan and almeta.al_status == "NOISY":
             almeta.score_override = 0
 
-        # determine an overall score for this match
-        score = self.YARA_SCORE_MAP.get(almeta.rule_group, 0)
-        if almeta.implants:
-            score = max(score, 500)
-        if almeta.actors:
-            score = max(score, 500)
-        if almeta.score_override is not None:
-            score = int(almeta.score_override)
-
-        section = ResultSection('', score=score, classification=almeta.classification)
-
+        section = ResultSection('', classification=almeta.classification)
+        section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.rule_group, 1))
         section.add_tag('file.rule.yara', match.rule)
 
         title_elements = [match.rule, ]
@@ -275,58 +264,6 @@ class Yara(ServiceBase):
             if more:
                 section.add_line(f"Found {entry_name} string {more} more time{'s' if more > 1 else ''}")
 
-    def _compile_rules(self, rules_txt):
-        """
-        Saves Yara rule content to file, validates the content with Yara Validator, and uses Yara python to compile
-        the rule set.
-
-        Args:
-            rules_txt: Yara rule file content.
-
-        Returns:
-            Last update time, compiled rules, compiled rules md5.
-        """
-        tmp_dir = tempfile.mkdtemp(dir='/tmp')
-        try:
-            # Extract the first line of the rules which should look like this:
-            # // Signatures last updated: LAST_UPDATE_IN_ISO_FORMAT
-            first_line, clean_data = rules_txt.split('\n', 1)
-            prefix = '// Signatures last updated: '
-
-            if first_line.startswith(prefix):
-                last_update = first_line.replace(prefix, '')
-            else:
-                self.log.warning(f"Couldn't read last update time from {rules_txt[:40]}")
-                last_update = now_as_iso()
-                clean_data = rules_txt
-
-            rules_file = os.path.join(tmp_dir, 'rules.yar')
-            with open(rules_file, 'w') as f:
-                f.write(rules_txt)
-            try:
-                validate = YaraValidator(externals=self.get_yara_externals, logger=self.log)
-                edited = validate.validate_rules(rules_file, datastore=True)
-            except Exception as e:
-                raise e
-            # Grab the final output if Yara Validator found problem rules
-            if edited:
-                with open(rules_file, 'r') as f:
-                    sdata = f.read()
-                first_line, clean_data = sdata.split('\n', 1)
-                if first_line.startswith(prefix):
-                    last_update = first_line.replace(prefix, '')
-                else:
-                    last_update = now_as_iso()
-                    clean_data = sdata
-
-            rules = yara.compile(rules_file, externals=self.get_yara_externals)
-            rules_md5 = hashlib.md5(clean_data).hexdigest()
-            return last_update, rules, rules_md5
-        except Exception as e:
-            raise e
-        finally:
-            shutil.rmtree(tmp_dir)
-
     def _extract_result_from_matches(self, matches):
         """
         Iterate through Yara match object and send to parser.
@@ -388,43 +325,26 @@ class Yara(ServiceBase):
         """Convert classification to uppercase."""
         almeta.classification = almeta.classification.upper()
 
-    def _update_rules(self, **_):
+    def _load_rules(self, yara_rules_dirs, **_):
         """
-        Update yara rules file. This module will use the AL client to see if the signature set in datastore has been
+        Load Yara rules file. This module will use the AL client to see if the signature set in datastore has been
         modified since self.last_update. If there is an update available, the new signature set will be downloaded
         and saved to a new rules cache file.
         """
-        self.log.info("Starting Yara's rule updater...")
+        if not os.path.exists(yara_rules_dirs):
+            raise Exception("Yara rules directory not found")
 
-        if self.signature_cache.exists(self.rule_path):
-            api_response = self.update_client.signature.update_available(self.last_update)
-            update_available = api_response.get('update_available', False)
-            if not update_available:
-                self.log.info("No update available. Stopping...")
-                return
+        yara_rules_dir = sorted(os.listdir(yara_rules_dirs), reverse=True)[0]
 
-        self.log.info(f"Downloading signatures with query: {self.signature_query} ({str(self.last_update)})")
+        filepaths = {os.path.basename(x): x for x in os.listdir(yara_rules_dir)}
 
-        signature_data = StringIO()
-        self.update_client.signature.download(output=signature_data, query=self.signature_query, safe=True)
+        self.log.info(f"Yara loaded rules from: {yara_rules_dir}")
+        rules = yara.compile(filepaths=filepaths, externals=self.get_yara_externals)
 
-        rules_txt = signature_data.getvalue()
-        if not rules_txt:
-            errormsg = f"No rules to compile:\n{rules_txt}"
-            self.log.error("{}/api/v3/signature/download/?query={} - {}:{}".format(
-                self.signature_url, self.signature_query, self.signature_user, self.signature_pass)
-            )
-            self.log.error(errormsg)
-            raise ConfigException(errormsg)
-
-        self.signature_cache.save(self.rule_path, rules_txt)
-
-        last_update, rules, rules_md5 = self._compile_rules(rules_txt)
         if rules:
             with self.initialization_lock:
-                self.last_update = last_update
                 self.rules = rules
-                self.rules_md5 = rules_md5
+                # self.rules_md5 = rules_md5
 
     # noinspection PyBroadException
     def execute(self, request):
@@ -465,7 +385,7 @@ class Yara(ServiceBase):
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
                 # Internal error 30 == exceeded max string matches on rule
-                if e.message != "internal error: 30":
+                if e != "internal error: 30":
                     raise
                 else:
                     try:
@@ -492,22 +412,13 @@ class Yara(ServiceBase):
         # Set configuration flags to 4 times the default
         yara.set_config(max_strings_per_rule=40000, stack_size=65536)
 
-        force_rule_download = False
         try:
-            # Even if we are using riak for rules we may have a saved copy
-            # of the rules. Try to load and compile them first.
-            self.signature_cache.makedirs(os.path.dirname(self.rule_path))
-            rules_txt = self.signature_cache.get(self.rule_path)
-            if rules_txt:
-                self.log.info(f"Yara loaded rules from cached file: {self.rule_path}")
-                self.last_update, self.rules, self.rules_md5 = \
-                    self._compile_rules(rules_txt)
-            else:
-                self.log.info("No cached Yara rules found.")
-                force_rule_download = True
+            yara_rules_dir = os.environ.get('UPDATES_DIR')
+
+            # Load the rules
+            self._load_rules(yara_rules_dir)
 
         except Exception as e:
-            self.log.warning(f"Something went wrong while trying to load cached rules: {e}")
-            force_rule_download = True
+            self.log.warning(f"Something went wrong while trying to load Yara rules: {str(e)}")
 
         self.log.info(f"Yara started with service version: {self.get_service_version()}")

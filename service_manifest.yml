@@ -29,16 +29,16 @@ submission_params: []
 
 heuristics:
   - heur_id: 1
-    name: Implant
-    score: 1000
+    name: Info
+    score: 0
     filetype: *
-    description: Yara rule - Implant group
+    description: Yara rule - Info group
 
   - heur_id: 2
-    name: Tool
-    score: 500
+    name: Technique
+    score: 100
     filetype: *
-    description: Yara rule - Tool group
+    description: Yara rule - Technique group
 
   - heur_id: 3
     name: Exploit
@@ -47,16 +47,16 @@ heuristics:
     description: Yara rule - Exploit group
 
   - heur_id: 4
-    name: Technique
-    score: 100
+    name: Tool
+    score: 500
     filetype: *
-    description: Yara rule - Technique group
+    description: Yara rule - Tool group
 
   - heur_id: 5
-    name: Info
-    score: 0
+    name: Implant
+    score: 1000
     filetype: *
-    description: Yara rule - Info group
+    description: Yara rule - Implant group
 
 docker_config:
   image: cccs/assemblyline-service-yara:latest

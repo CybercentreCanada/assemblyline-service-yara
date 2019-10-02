@@ -1,6 +1,6 @@
 FROM cccs/assemblyline-v3-service-base:latest
 
-ENV SERVICE_PATH alsvc_yara.Yara
+ENV SERVICE_PATH yara.Yara
 
 # Download the package file
 #RUN pip3 download -d /tmp yara-pythpn
@@ -8,11 +8,11 @@ ENV SERVICE_PATH alsvc_yara.Yara
 #RUN python3 setup.py build --enable-dotnet
 #RUN python3 setup.py install
 
-RUN pip3 install --user yara-python --global-option "build" --global-option "--enable-dotnet"
+RUN pip install --user yara-python --global-option "build" --global-option "--enable-dotnet"
 
 
 # Copy Yara service code
-WORKDIR /opt/al/al_services/alsvc_yara
+WORKDIR /opt/al_service
 COPY . .
 
 # Copy the default 'rules.yar' file to '/opt/al/var/cache/signatures/'

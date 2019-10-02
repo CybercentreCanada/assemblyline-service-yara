@@ -1,5 +1,4 @@
-# from __future__ import absolute_import
-
+import glob
 import os
 import threading
 
@@ -76,10 +75,6 @@ class YaraMetadata(object):
                 self.info.append((None, tokens[0]))
 
 
-NUM_RULES = 'yara.num_rules'
-RULE_HITS = 'yara.total_rule_hits'
-
-
 class Yara(ServiceBase):
     TECHNIQUE_DESCRIPTORS = dict(
         shellcode=('technique.shellcode', 'Embedded shellcode'),
@@ -111,7 +106,7 @@ class Yara(ServiceBase):
         self.verify = self.config.get('VERIFY', False)
         self.get_yara_externals = {"al_%s" % i: i for i in config.system.yara.externals}
         self.update_client = None
-        self.yara_version = "3.8.1"
+        self.yara_version = "3.10.0"
 
     def _add_resultinfo_for_match(self, result: Result, match):
         """
@@ -327,24 +322,37 @@ class Yara(ServiceBase):
 
     def _load_rules(self, yara_rules_dirs, **_):
         """
-        Load Yara rules file. This module will use the AL client to see if the signature set in datastore has been
-        modified since self.last_update. If there is an update available, the new signature set will be downloaded
-        and saved to a new rules cache file.
+        Load Yara rules files. This function will check the updates directory and try to load the latest set of
+        Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
         if not os.path.exists(yara_rules_dirs):
             raise Exception("Yara rules directory not found")
 
-        yara_rules_dir = sorted(os.listdir(yara_rules_dirs), reverse=True)[0]
+        yara_rules_dirs = sorted(os.listdir(yara_rules_dirs), reverse=True)
 
-        filepaths = {os.path.basename(x): x for x in os.listdir(yara_rules_dir)}
+        rules = None
+        for yara_rules_dir in yara_rules_dirs:
+            # Find all the .yar files
+            yar_files = glob.glob(os.path.join(yara_rules_dir, '*.yar'))
+            if not yar_files:
+                continue
 
-        self.log.info(f"Yara loaded rules from: {yara_rules_dir}")
-        rules = yara.compile(filepaths=filepaths, externals=self.get_yara_externals)
+            # Load all files in the dir, each file will have its own Yara namespace
+            # Each file is expected to be from a different repo source
+            # Using namespaces, allows us to handle Yara rule name conflicts
+            filepaths = {os.path.basename(x): x for x in yar_files}
 
-        if rules:
-            with self.initialization_lock:
-                self.rules = rules
-                # self.rules_md5 = rules_md5
+            self.log.info(f"Yara loaded rules from: {yara_rules_dir}")
+            rules = yara.compile(filepaths=filepaths, externals=self.get_yara_externals)
+
+            if rules:
+                with self.initialization_lock:
+                    self.rules = rules
+                    # self.rules_md5 = rules_md5
+                    return
+
+        if not rules:
+            raise Exception("No valid Yara rules files found")
 
     # noinspection PyBroadException
     def execute(self, request):
@@ -413,7 +421,7 @@ class Yara(ServiceBase):
         yara.set_config(max_strings_per_rule=40000, stack_size=65536)
 
         try:
-            yara_rules_dir = os.environ.get('UPDATES_DIR')
+            yara_rules_dir = os.environ.get('UPDATES_DIR')  # TODO: whats the env variable called?
 
             # Load the rules
             self._load_rules(yara_rules_dir)

@@ -31,31 +31,31 @@ heuristics:
   - heur_id: 1
     name: Info
     score: 0
-    filetype: *
+    filetype: '*'
     description: Yara rule - Info group
 
   - heur_id: 2
     name: Technique
     score: 100
-    filetype: *
+    filetype: '*'
     description: Yara rule - Technique group
 
   - heur_id: 3
     name: Exploit
     score: 500
-    filetype: *
+    filetype: '*'
     description: Yara rule - Exploit group
 
   - heur_id: 4
     name: Tool
     score: 500
-    filetype: *
+    filetype: '*'
     description: Yara rule - Tool group
 
   - heur_id: 5
     name: Implant
     score: 1000
-    filetype: *
+    filetype: '*'
     description: Yara rule - Implant group
 
 docker_config:

@@ -127,7 +127,7 @@ class Yara(ServiceBase):
             almeta.score_override = 0
 
         section = ResultSection('', classification=almeta.classification)
-        section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.rule_group, 1))
+        section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.rule_group, 1), signature=match.rule)
         section.add_tag('file.rule.yara', match.rule)
 
         title_elements = [match.rule, ]

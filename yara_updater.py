@@ -9,6 +9,7 @@ import time
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
 from git import Repo
+from io import StringIO
 
 import requests
 import yaml
@@ -16,6 +17,7 @@ import yaml
 from assemblyline.common import log as al_log
 from assemblyline.common.digests import get_sha256_for_file
 from assemblyline.common.isotime import now_as_iso
+from yara_importer import YaraImporter
 
 al_log.init_logging('service_updater')
 
@@ -24,7 +26,6 @@ LOGGER = logging.getLogger('assemblyline.service_updater')
 
 UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', None)
 UPDATE_OUTPUT_PATH = os.environ.get('UPDATE_OUTPUT_PATH', None)
-SIGNATURE_IMPORTER_APIKEY = os.environ.get()
 
 
 def _compile_rules(self, rules_files: List[str]):
@@ -81,16 +82,14 @@ def _compile_rules(self, rules_files: List[str]):
         shutil.rmtree(tmp_dir)
 
 
-def url_download(source: Dict[str, Any], previous_update: Optional[float] = None,
-                 multiple_sources: bool = True) -> Optional[str]:
+def url_download(source: Dict[str, Any], previous_update: Optional[float] = None) -> Optional[str]:
     """
 
     :param source:
-    :param multiple_sources: are there multiple update sources? If so, then download the file regardless of when
-                             it was last modified
     :param previous_update:
     :return:
     """
+    name = source['name']
     uri = source['uri']
     username = source.get('username', None)
     password = source.get('password', None)
@@ -105,7 +104,7 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
         # Check the response header for the last modified date
         response = session.head(uri, auth=auth, headers=headers)
         last_modified = response.headers.get('Last-Modified', None)
-        if last_modified and not multiple_sources:
+        if last_modified:
             # Convert the last modified time to epoch
             last_modified = time.mktime(time.strptime(last_modified, "%a, %d %b %Y %H:%M:%S %Z"))
 
@@ -114,14 +113,12 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
                 # File has not been modified since last update, do nothing
                 return
 
-        if previous_update and not multiple_sources:
+        if previous_update:
             previous_update = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime(previous_update))
             if headers:
                 headers['If-Modified-Since'] = previous_update
             else:
-                headers = {
-                    'If-Modified-Since': previous_update,
-                }
+                headers = {'If-Modified-Since': previous_update}
 
         response = session.get(uri, auth=auth, headers=headers)
 
@@ -130,7 +127,7 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
             # File has not been modified since last update, do nothing
             return
         elif response.ok:
-            file_name = os.path.basename(urlparse(uri).path)
+            file_name = os.path.basename(urlparse(uri).path) # TODO: make filename as source name with extension .yar
             file_path = os.path.join(tempfile.gettempdir(), file_name)
             with open(file_path, 'wb') as f:
                 f.write(response.content)
@@ -184,8 +181,6 @@ def yara_update() -> None:
 
     files_sha256 = []
 
-    multiple_sources = len(sources) > 1
-
     # Go through each source and download file
     for source in sources:
         uri: str = source['uri']
@@ -196,7 +191,7 @@ def yara_update() -> None:
                 files_sha256.extend(sha256)
         else:
             previous_update = update_config.get('previous_update', None)
-            sha256 = url_download(source, previous_update=previous_update, multiple_sources=multiple_sources)
+            sha256 = url_download(source, previous_update=previous_update)
             if sha256:
                 files_sha256.append(sha256)
 
@@ -224,18 +219,28 @@ def yara_update() -> None:
     yar_files = []
 
     for x in os.listdir(tempfile.gettempdir()):
+        source = os.path.splitext(os.path.basename(x))[0]
         if os.path.isdir(os.path.join(tempfile.gettempdir(), x)):
-            pass
-            # TODO: 1) merge all yar files into single yar file
-            #       2) validate/compile single yar file by cleaning up any invalid signatures
-            #       3) return complete file path of single yar file named with source['name']
-        else:
-            pass
-            # TODO: 1) validate/compile single yar file by cleaning up any invalid signatures
-            #       2) return complete file path of single yar file named with source['name']
+            # Build a master yar file which includes all child files
+            master_yar = StringIO()
+            yar_files = glob.glob(os.path.join(x, '*.yar'))
+            for yar_file in yar_files:
+                master_yar.write(f'include "{yar_file}"\n')
 
-    # TODO: save the YARA rules into datastore through AL client
-    # TODO: move all validated single yar files to UPDATE_OUTPUT_PATH
+            yar_file = os.path.join(tempfile.gettempdir(), f'{source}.yar')
+            with open('file.xml', 'w') as fh:
+                master_yar.seek(0)
+                shutil.copyfileobj(master_yar, fh)
+        else:
+            yar_file = x
+            pass
+
+        # TODO: validate/compile single yar file by cleaning up any invalid signatures
+
+        # Save the YARA rules into datastore through AL client
+        YaraImporter.import_file(yar_file, source=source)
+
+    # TODO: Download all signatures matching query and unzip received file to UPDATE_OUTPUT_PATH
 
 
 if __name__ == '__main__':

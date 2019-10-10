@@ -151,9 +151,8 @@ def git_clone_repo(source: Dict[str, Any]) -> List[str]:
     url = source['uri']
     pattern = source.get('pattern', None)
 
-    repo = Repo()
     clone_dir = os.path.join(tempfile.gettempdir(), name)
-    repo.clone_from(url, clone_dir)
+    repo = Repo.clone_from(url, clone_dir)
 
     if pattern:
         files = [f for f in os.listdir(clone_dir) if re.match(pattern, f)]

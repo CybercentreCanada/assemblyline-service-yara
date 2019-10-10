@@ -17,7 +17,7 @@ import yaml
 from assemblyline.common import log as al_log
 from assemblyline.common.digests import get_sha256_for_file
 from assemblyline.common.isotime import now_as_iso
-from yara_importer import YaraImporter
+from yara.yara_importer import YaraImporter
 
 al_log.init_logging('service_updater')
 

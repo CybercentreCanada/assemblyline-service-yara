@@ -1,13 +1,15 @@
 import glob
+import json
 import os
 import threading
+from typing import List
 
 import yara
 
 from assemblyline.common import forge
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.base import ServiceBase
-from assemblyline_v4_service.common.result import Result, ResultSection
+from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
 
 Classification = forge.get_classification()
 
@@ -181,28 +183,41 @@ class Yara(ServiceBase):
         title = " ".join(title_elements)
         section.title_text = title
 
+        json_body = dict()
+
         if almeta.rule_id and almeta.rule_version and almeta.poc:
-            section.add_line(f"Rule Info : {almeta.rule_id} r.{almeta.rule_version} by {almeta.poc}")
+            json_body.update(dict(
+                rule_id=almeta.rule_id,
+                rule_version=almeta.rule_version,
+                poc=almeta.poc,
+            ))
+
+            # section.add_line(f"Rule Info : {almeta.rule_id} r.{almeta.rule_version} by {almeta.poc}")
 
         if almeta.description:
-            section.add_line(f"Description: {almeta.description}")
+            json_body['description'] = almeta.description
+            # section.add_line(f"Description: {almeta.description}")
 
-        self._add_string_match_data(match, section)
+        string_match_data = self._add_string_match_data(match)
+        if string_match_data:
+            json_body['string_hits'] = string_match_data
+
+        section.set_body(json.dumps(json_body), body_format=BODY_FORMAT.JSON)
 
         result.add_section(section)
         # result.order_results_by_score() TODO: should v4 support this?
 
-    def _add_string_match_data(self, match, section: ResultSection) -> None:
+    def _add_string_match_data(self, match) -> List[str]:
         """
         Parses and adds matching strings from a Yara match object to an AL ResultSection.
 
         Args:
             match: Yara match object.
-            section: AL ResultSection object.
 
         Returns:
             None.
         """
+        string_hits = []
         strings = match.strings
         string_dict = {}
         for offset, identifier, data in strings:
@@ -248,16 +263,21 @@ class Yara(ServiceBase):
 
             string_hit = f"Found {entry_name} string: '{string_value} [@ {string_offset}]" \
                          f"{' (' + str(count) + 'x)' if count > 1 else ''}'"
-            section.add_line(string_hit)
+            string_hits.append(string_hit)
+            # section.add_line(string_hit)
 
         for entry_name, result_list in result_dict.items():
             for result in result_list[:5]:
                 string_hit = f"Found {entry_name} string: '{result[0]}' [@ {result[1]}]"\
                              f"{' (' + str(result[2]) + 'x)' if result[2] > 1 else ''}"
-                section.add_line(string_hit)
+                string_hits.append(string_hit)
+                # section.add_line(string_hit)
             more = len(result_list[5:])
             if more:
-                section.add_line(f"Found {entry_name} string {more} more time{'s' if more > 1 else ''}")
+                string_hits.append(f"Found {entry_name} string {more} more time{'s' if more > 1 else ''}")
+                # section.add_line(f"Found {entry_name} string {more} more time{'s' if more > 1 else ''}")
+
+        return string_hits
 
     def _extract_result_from_matches(self, matches):
         """

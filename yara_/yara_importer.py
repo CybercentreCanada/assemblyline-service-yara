@@ -29,7 +29,7 @@ class YaraImporter(object):
         user = update_config['api_user']
         api_key = update_config['api_key']
 
-        self.update_client = Client(server, apikey=(user, api_key))
+        self.update_client = Client(server, apikey=(user, api_key), verify=False)
 
         self.classification = forge.get_classification()
         self.log = logger

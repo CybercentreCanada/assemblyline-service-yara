@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
 from git import Repo
 from io import StringIO
+import fnmatch
 
 import requests
 import yaml
@@ -17,7 +18,7 @@ import yaml
 from assemblyline.common import log as al_log
 from assemblyline.common.digests import get_sha256_for_file
 from assemblyline.common.isotime import now_as_iso
-from yara.yara_importer import YaraImporter
+from yara_.yara_importer import YaraImporter
 
 al_log.init_logging('service_updater')
 
@@ -146,12 +147,15 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
         session.close()
 
 
-def git_clone_repo(source: Dict[str, Any]) -> List[str]:
+def git_clone_repo(source: Dict[str, Any]) -> List[str] and List[str]:
     name = source['name']
     url = source['uri']
     pattern = source.get('pattern', None)
 
     clone_dir = os.path.join(tempfile.gettempdir(), name)
+    if os.path.exists(clone_dir):
+        shutil.rmtree(clone_dir)
+
     repo = Repo.clone_from(url, clone_dir)
 
     if pattern:
@@ -161,7 +165,7 @@ def git_clone_repo(source: Dict[str, Any]) -> List[str]:
 
     files_sha256 = [get_sha256_for_file(x) for x in files]
 
-    return files_sha256
+    return files, files_sha256
 
 
 def yara_update() -> None:
@@ -175,13 +179,15 @@ def yara_update() -> None:
     sources = update_config.get('sources', None)
 
     # Exit if no update sources given
-    if not sources:
+    if 'sources' not in update_config.keys():
         exit()
+
+    sources = {source['name']: source for source in update_config['sources']}
 
     files_sha256 = []
 
     # Go through each source and download file
-    for source in sources:
+    for source_name, source in sources.items():
         uri: str = source['uri']
 
         if uri.endswith('.git'):
@@ -208,36 +214,43 @@ def yara_update() -> None:
 
     # Create the response yaml
     with open(os.path.join(UPDATE_OUTPUT_PATH, 'response.yaml'), 'w') as yml_fh:
-        yaml.dump(yml_fh, dict(
+        yaml.safe_dump(dict(
             previous_update=now_as_iso(),
             previous_hash=new_hash,
-        ))
+        ), yml_fh)
 
     LOGGER.info("YARA rule(s) file(s) successfully downloaded")
 
     yar_files = []
+    yara_importer = YaraImporter()
 
     for x in os.listdir(tempfile.gettempdir()):
-        source = os.path.splitext(os.path.basename(x))[0]
+        source_name = os.path.splitext(os.path.basename(x))[0]
         if os.path.isdir(os.path.join(tempfile.gettempdir(), x)):
+            source = sources[source_name]
+
             # Build a master yar file which includes all child files
-            master_yar = StringIO()
+            index_yar = StringIO()
             yar_files = glob.glob(os.path.join(x, '*.yar'))
             for yar_file in yar_files:
-                master_yar.write(f'include "{yar_file}"\n')
+                pattern = source.get('pattern', None)
+                if pattern:
+                    if fnmatch.fnmatch(yar_file, pattern):
+                        index_yar.write(f'include "{yar_file}"\n')
+                else:
+                    index_yar.write(f'include "{yar_file}"\n')
 
-            yar_file = os.path.join(tempfile.gettempdir(), f'{source}.yar')
+            yar_file = os.path.join(tempfile.gettempdir(), f'{source_name}.yar')
             with open('file.xml', 'w') as fh:
-                master_yar.seek(0)
-                shutil.copyfileobj(master_yar, fh)
+                index_yar.seek(0)
+                shutil.copyfileobj(index_yar, fh)
         else:
             yar_file = x
-            pass
 
         # TODO: validate/compile single yar file by cleaning up any invalid signatures
 
         # Save the YARA rules into datastore through AL client
-        YaraImporter.import_file(yar_file, source=source)
+        yara_importer.import_file(yar_file, source_name)
 
     # TODO: Download all signatures matching query and unzip received file to UPDATE_OUTPUT_PATH
 

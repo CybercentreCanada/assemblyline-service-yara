@@ -1,6 +1,6 @@
 FROM cccs/assemblyline-v3-service-base:latest
 
-ENV SERVICE_PATH yara.Yara
+ENV SERVICE_PATH yara.yara.Yara
 
 # Download the package file
 #RUN pip3 download -d /tmp yara-pythpn

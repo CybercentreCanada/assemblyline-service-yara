@@ -64,3 +64,13 @@ docker_config:
 
 update_config:
   generates_signatures: true
+  method: run
+  run_options:
+    allow_internet_access: true
+    command: ["python", "-m", "yara.yara_updater"]
+    image: cccs/assemblyline-service-yara:latest
+  sources:
+    - name: yara_rules
+      uri: https://github.com/Yara-Rules/rules.git
+      pattern: "index.yar"
+  update_interval_seconds: 3600

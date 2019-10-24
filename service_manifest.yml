@@ -1,11 +1,11 @@
-name: APKaye
+name: YARA
 version: 1
 description: >-
   This services runs all DEPLOYED and NOISY signatures on submitted files. NOISY rules
   are reported but do not influence the score. DEPLOYED rules score according to their
   rule group (implant => 1000 | exploit & tool => 500 | technique => 100 | info => 0).
 
-accepts: android/apk
+accepts: .*
 rejects: empty|metadata/.*
 
 stage: CORE
@@ -67,7 +67,7 @@ update_config:
   method: run
   run_options:
     allow_internet_access: true
-    command: ["python", "-m", "yara.yara_updater"]
+    command: ["python", "-m", "yara_.yara_updater"]
     image: cccs/assemblyline-service-yara:latest
   sources:
     - name: yara_rules

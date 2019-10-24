@@ -6,19 +6,20 @@ import re
 import shutil
 import tempfile
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 from urllib.parse import urlparse
-from git import Repo
-from io import StringIO
-import fnmatch
-
+from zipfile import ZipFile
 import requests
 import yaml
+import yara
+from assemblyline_client import Client
+from git import Repo
 
 from assemblyline.common import log as al_log
 from assemblyline.common.digests import get_sha256_for_file
 from assemblyline.common.isotime import now_as_iso
 from yara_.yara_importer import YaraImporter
+from yara_.yara_validator import YaraValidator
 
 al_log.init_logging('service_updater')
 
@@ -27,9 +28,12 @@ LOGGER = logging.getLogger('assemblyline.service_updater')
 
 UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', None)
 UPDATE_OUTPUT_PATH = os.environ.get('UPDATE_OUTPUT_PATH', None)
+UPDATE_DIR = os.path.join(tempfile.gettempdir(), 'yara_updates')
+
+YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
 
 
-def _compile_rules(self, rules_files: List[str]):
+def _compile_rules(rules_file, source_name):
     """
     Saves Yara rule content to file, validates the content with Yara Validator, and uses Yara python to compile
     the rule set.
@@ -40,47 +44,26 @@ def _compile_rules(self, rules_files: List[str]):
     Returns:
         Compiled rules, compiled rules md5.
     """
-    filepaths = dict()
     try:
-        for rules_file in rules_files:
-            # Extract the first line of the rules which should look like this:
-            # // Signatures last updated: LAST_UPDATE_IN_ISO_FORMAT
-            first_line, clean_data = rules_txt.split('\n', 1)
-            prefix = '// Signatures last updated: '
-
-            if first_line.startswith(prefix):
-                last_update = first_line.replace(prefix, '')
-            else:
-                self.log.warning(f"Couldn't read last update time from {rules_txt[:40]}")
-                # last_update = now_as_iso()
-                clean_data = rules_txt
-
-            temp_rules_file = os.path.join(tempfile.gettempdir(), 'yara_rules', os.path.basename(rules_file))
-            shutil.copy(rules_file, temp_rules_file)
-
-            try:
-                validate = YaraValidator(externals=self.get_yara_externals, logger=self.log)
-                edited = validate.validate_rules(temp_rules_file, datastore=True)
-            except Exception as e:
-                raise e
-            # Grab the final output if Yara Validator found problem rules
-            if edited:
-                with open(rules_file, 'r') as f:
-                    sdata = f.read()
-                first_line, clean_data = sdata.split('\n', 1)
-                if first_line.startswith(prefix):
-                    last_update = first_line.replace(prefix, '')
-                else:
-                    last_update = now_as_iso()
-                    clean_data = sdata
-
-        rules = yara.compile(filepaths=filepaths, externals=self.get_yara_externals)
-        rules_md5 = hashlib.md5(clean_data).hexdigest()
-        return rules, rules_md5
+        validate = YaraValidator(externals=YARA_EXTERNALS, logger=LOGGER)
+        edited = validate.validate_rules(rules_file)
     except Exception as e:
         raise e
-    finally:
-        shutil.rmtree(tmp_dir)
+    # Grab the final output if Yara Validator found problem rules
+    # if edited:
+        # with open(rules_file, 'r') as f:
+        #     sdata = f.read()
+        # first_line, clean_data = sdata.split('\n', 1)
+        # if first_line.startswith(prefix):
+        #     last_update = first_line.replace(prefix, '')
+        # else:
+        #     last_update = now_as_iso()
+        #     clean_data = sdata
+
+    # Try to compile the final/cleaned yar file
+    rules = yara.compile(rules_file, externals=YARA_EXTERNALS)
+
+    return True
 
 
 def url_download(source: Dict[str, Any], previous_update: Optional[float] = None) -> Optional[str]:
@@ -129,7 +112,7 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
             return
         elif response.ok:
             file_name = os.path.basename(urlparse(uri).path) # TODO: make filename as source name with extension .yar
-            file_path = os.path.join(tempfile.gettempdir(), file_name)
+            file_path = os.path.join(UPDATE_DIR, file_name)
             with open(file_path, 'wb') as f:
                 f.write(response.content)
 
@@ -152,20 +135,40 @@ def git_clone_repo(source: Dict[str, Any]) -> List[str] and List[str]:
     url = source['uri']
     pattern = source.get('pattern', None)
 
-    clone_dir = os.path.join(tempfile.gettempdir(), name)
+    clone_dir = os.path.join(UPDATE_DIR, name)
     if os.path.exists(clone_dir):
         shutil.rmtree(clone_dir)
 
     repo = Repo.clone_from(url, clone_dir)
 
     if pattern:
-        files = [f for f in os.listdir(clone_dir) if re.match(pattern, f)]
+        files = [os.path.join(clone_dir, f) for f in os.listdir(clone_dir) if re.match(pattern, f)]
     else:
         files = glob.glob(os.path.join(clone_dir, '*.yar'))
 
     files_sha256 = [get_sha256_for_file(x) for x in files]
 
     return files, files_sha256
+
+
+def replace_include(include, dirname, processed_files: Set[str]):
+    include_path = re.match(r"include [\'\"](.{4,})[\'\"]", include).group(1)
+    full_include_path = os.path.normpath(os.path.join(dirname, include_path))
+
+    temp_lines = []
+    if full_include_path not in processed_files:
+        processed_files.add(full_include_path)
+        with open(full_include_path, 'r') as include_f:
+            lines = include_f.readlines()
+
+        for i, line in enumerate(lines):
+            if line.startswith("include"):
+                lines, processed_files = replace_include(line, dirname, processed_files)
+                temp_lines.extend(lines)
+            else:
+                temp_lines.append(line)
+
+    return temp_lines, processed_files
 
 
 def yara_update() -> None:
@@ -182,77 +185,111 @@ def yara_update() -> None:
     if 'sources' not in update_config.keys():
         exit()
 
+    update_start_time = now_as_iso()
     sources = {source['name']: source for source in update_config['sources']}
 
     files_sha256 = []
+
+    al_combined_yara_rules_dir = os.path.join(tempfile.gettempdir(), 'al_combined_yara_rules')
+    if not os.path.exists(al_combined_yara_rules_dir):
+        os.makedirs(al_combined_yara_rules_dir)
 
     # Go through each source and download file
     for source_name, source in sources.items():
         uri: str = source['uri']
 
         if uri.endswith('.git'):
-            sha256 = git_clone_repo(source)
+            files, sha256 = git_clone_repo(source)
             if sha256:
                 files_sha256.extend(sha256)
         else:
             previous_update = update_config.get('previous_update', None)
-            sha256 = url_download(source, previous_update=previous_update)
+            files, sha256 = url_download(source, previous_update=previous_update)
             if sha256:
                 files_sha256.append(sha256)
+
+        processed_files = set()
+        for file in files:
+            # File has already been processed before, skip it to avoid duplication of rules
+            if file in processed_files:
+                continue
+
+            file_basename = os.path.splitext(os.path.basename(file))[0]
+            file_dirname = os.path.dirname(file)
+            processed_files.add(os.path.normpath(file))
+            with open(file, 'r') as f:
+                f_lines = f.readlines()
+
+            temp_lines = []
+            for i, f_line in enumerate(f_lines):
+                if f_line.startswith("include"):
+                    lines, processed_files = replace_include(f_line, file_dirname, processed_files)
+                    temp_lines.extend(lines)
+                else:
+                    temp_lines.append(f_line)
+
+            # Save all rules from source into single file
+            file_name = os.path.join(al_combined_yara_rules_dir, f"{source_name}_{file_basename}.yar")
+            with open(file_name, 'w') as f:
+                f.writelines(temp_lines)
 
     if not files_sha256:
         LOGGER.info('No YARA rule file(s) downloaded')
         exit()
 
-    new_hash = hashlib.md5(' '.join(sorted(files_sha256)).encode('utf-8')).hexdigest()
-
-    # Check if the new update hash matches the previous update hash
-    if new_hash == update_config.get('previous_hash', None):
-        # Update file(s) not changed, delete the downloaded files and exit
-        shutil.rmtree(UPDATE_OUTPUT_PATH, ignore_errors=True)
-        exit()
-
-    # Create the response yaml
-    with open(os.path.join(UPDATE_OUTPUT_PATH, 'response.yaml'), 'w') as yml_fh:
-        yaml.safe_dump(dict(
-            previous_update=now_as_iso(),
-            previous_hash=new_hash,
-        ), yml_fh)
+    # new_hash = hashlib.md5(' '.join(sorted(files_sha256)).encode('utf-8')).hexdigest()
+    #
+    # # Check if the new update hash matches the previous update hash
+    # if new_hash == update_config.get('previous_hash', None):
+    #     # Update file(s) not changed, delete the downloaded files and exit
+    #     shutil.rmtree(UPDATE_OUTPUT_PATH, ignore_errors=True)
+    #     exit()
 
     LOGGER.info("YARA rule(s) file(s) successfully downloaded")
 
-    yar_files = []
-    yara_importer = YaraImporter()
+    server = update_config['ui_server']
+    user = update_config['api_user']
+    api_key = update_config['api_key']
+    al_client = Client(server, apikey=(user, api_key), verify=False)
 
-    for x in os.listdir(tempfile.gettempdir()):
+    yara_importer = YaraImporter(al_client)
+
+    for x in os.listdir(al_combined_yara_rules_dir):
         source_name = os.path.splitext(os.path.basename(x))[0]
-        if os.path.isdir(os.path.join(tempfile.gettempdir(), x)):
-            source = sources[source_name]
 
-            # Build a master yar file which includes all child files
-            index_yar = StringIO()
-            yar_files = glob.glob(os.path.join(x, '*.yar'))
-            for yar_file in yar_files:
-                pattern = source.get('pattern', None)
-                if pattern:
-                    if fnmatch.fnmatch(yar_file, pattern):
-                        index_yar.write(f'include "{yar_file}"\n')
-                else:
-                    index_yar.write(f'include "{yar_file}"\n')
+        tmp_dir = tempfile.mkdtemp(dir='/tmp')
+        try:
+            rules_file = os.path.join(tmp_dir, 'rules.yar')
+            with open(rules_file, 'w') as f:
+                f.write(open(os.path.join(al_combined_yara_rules_dir, x), 'r').read())
 
-            yar_file = os.path.join(tempfile.gettempdir(), f'{source_name}.yar')
-            with open('file.xml', 'w') as fh:
-                index_yar.seek(0)
-                shutil.copyfileobj(index_yar, fh)
-        else:
-            yar_file = x
-
-        # TODO: validate/compile single yar file by cleaning up any invalid signatures
-
-        # Save the YARA rules into datastore through AL client
-        yara_importer.import_file(yar_file, source_name)
+            _compile_rules(rules_file, source_name)
+            yara_importer.import_file(rules_file, source_name)
+        except Exception as e:
+            raise e
+        finally:
+            shutil.rmtree(tmp_dir)
 
     # TODO: Download all signatures matching query and unzip received file to UPDATE_OUTPUT_PATH
+    previous_update = update_config.get('previous_update', '')
+    if al_client.signature.update_available(since=previous_update, sig_type='yara')['update_available']:
+        LOGGER.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
+
+        temp_zip_file = os.path.join(UPDATE_OUTPUT_PATH, 'temp.zip')
+        al_client.signature.download(output=temp_zip_file, query="type:yara AND (status:TESTING OR status:DEPLOYED)")
+
+        if os.path.exists(temp_zip_file):
+            with ZipFile(temp_zip_file, 'r') as zip_f:
+                zip_f.extractall(UPDATE_OUTPUT_PATH)
+
+            os.remove(temp_zip_file)
+
+        # Create the response yaml
+        with open(os.path.join(UPDATE_OUTPUT_PATH, 'response.yaml'), 'w') as yml_fh:
+            yaml.safe_dump(dict(
+                previous_update=update_start_time,
+                previous_hash='new_hash',
+            ), yml_fh)
 
 
 if __name__ == '__main__':

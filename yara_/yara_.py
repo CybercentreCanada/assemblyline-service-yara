@@ -1,9 +1,9 @@
-import glob
 import json
 import os
 import threading
 from typing import List
 
+import glob
 import yara
 
 from assemblyline.common import forge
@@ -106,7 +106,7 @@ class Yara(ServiceBase):
         self.rule_path = self.config.get('RULE_PATH', 'rules.yar')
         self.signature_query = self.config.get('SIGNATURE_QUERY', 'meta.al_status:DEPLOYED OR meta.al_status:NOISY')
         self.verify = self.config.get('VERIFY', False)
-        self.get_yara_externals = {"al_%s" % i: i for i in config.system.yara.externals}
+        self.yara_externals = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
         self.update_client = None
         self.yara_version = "3.10.0"
 
@@ -362,7 +362,7 @@ class Yara(ServiceBase):
             # Using namespaces, allows us to handle Yara rule name conflicts
             filepaths = {os.path.basename(x): x for x in yar_files}
 
-            self.log.info(f"Yara loaded rules from: {yara_rules_dir}")
+            self.log.info(f"YARA loaded rules from: {yara_rules_dir}")
             rules = yara.compile(filepaths=filepaths, externals=self.get_yara_externals)
 
             if rules:
@@ -372,7 +372,7 @@ class Yara(ServiceBase):
                     return
 
         if not rules:
-            raise Exception("No valid Yara rules files found")
+            raise Exception("No valid YARA rules files found")
 
     # noinspection PyBroadException
     def execute(self, request):
@@ -384,7 +384,7 @@ class Yara(ServiceBase):
         local_filename = request.file_path
 
         yara_externals = {}
-        for k, i in self.get_yara_externals.items():
+        for k, i in self.yara_externals.items():
             # Check default request.task fields
             try:
                 sval = self.task.get(i)
@@ -422,13 +422,13 @@ class Yara(ServiceBase):
                         result = self._extract_result_from_matches(matches)
                         section = ResultSection("Service Warnings")
                         section.add_line("Too many matches detected with current ruleset. "
-                                         "Yara forced to scan in fast mode.")
+                                         "YARA forced to scan in fast mode.")
                         request.result = result
                     except:
-                        self.log.warning(f"Yara internal error 30 detected on submission {self.task.sid}")
+                        self.log.warning(f"YARA internal error 30 detected on submission {self.task.sid}")
                         result = Result()
-                        section = ResultSection("Yara scan not completed.")
-                        section.add_line("File returned too many matches with current rule set and Yara exited.")
+                        section = ResultSection("YARA scan not completed.")
+                        section.add_line("File returned too many matches with current rule set and YARA exited.")
                         result.add_section(section)
                         request.result = result
 
@@ -447,6 +447,6 @@ class Yara(ServiceBase):
             self._load_rules(yara_rules_dir)
 
         except Exception as e:
-            self.log.warning(f"Something went wrong while trying to load Yara rules: {str(e)}")
+            self.log.warning(f"Something went wrong while trying to load YARA rules: {str(e)}")
 
-        self.log.info(f"Yara started with service version: {self.get_service_version()}")
+        self.log.info(f"YARA started with service version: {self.get_service_version()}")

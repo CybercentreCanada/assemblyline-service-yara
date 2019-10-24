@@ -1,40 +1,29 @@
-import os
 import logging
-
-import yaml
+import os
 
 from assemblyline.common import forge
 from assemblyline.common.str_utils import safe_str
-from assemblyline.common.uid import get_id_from_data
 from assemblyline.odm.models.signature import Signature
-from assemblyline_client import Client
 
 UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', None)
 DEFAULT_STATUS = "TESTING"
 
 
 class YaraImporter(object):
-    def __init__(self, logger=None):
+    def __init__(self, al_client, logger=None):
         if not logger:
             from assemblyline.common import log as al_log
             al_log.init_logging('yara_importer')
             logger = logging.getLogger('assemblyline.yara_importer')
             logger.setLevel(logging.INFO)
 
-        if os.path.exists(UPDATE_CONFIGURATION_PATH):
-            with open(UPDATE_CONFIGURATION_PATH, 'r') as yml_fh:
-                update_config = yaml.safe_load(yml_fh)
-
-        server = update_config['ui_server']
-        user = update_config['api_user']
-        api_key = update_config['api_key']
-
-        self.update_client = Client(server, apikey=(user, api_key), verify=False)
+        self.update_client = al_client
 
         self.classification = forge.get_classification()
         self.log = logger
 
-    def get_signature_name(self, signature):
+    @staticmethod
+    def get_signature_name(signature):
         name = None
         for line in signature.splitlines():
             line = line.strip()
@@ -48,7 +37,8 @@ class YaraImporter(object):
             return name
         return name.strip()
 
-    def parse_meta(self, signature):
+    @staticmethod
+    def parse_meta(signature):
         meta = {}
         meta_started = False
         for line in signature.splitlines():
@@ -95,22 +85,26 @@ class YaraImporter(object):
                 data=signature,
                 name=name,
                 order=order,
-                revision=version,
+                revision=int(float(version)),
                 signature_id=signature_id,
                 source=source,
                 status=status,
                 type="yara",
             ))
-            self.update_client.signature.add_update()
+            r = self.update_client.signature.add_update(sig.as_primitives())
 
-            self.log.info(f"Added signature {name}")
+            if r['success']:
+                self.log.info(f"Successfully added signature {name} (ID: {r['id']}")
+            else:
+                self.log.warning(f"Failed to add signature {name}")
 
             saved_sigs.append(sig)
             order += 1
 
         return saved_sigs
 
-    def _split_signatures(self, data):
+    @ staticmethod
+    def _split_signatures(data):
         current_signature = []
         signatures = []
         in_rule = False
@@ -143,10 +137,3 @@ class YaraImporter(object):
                 return self.import_data(yara_bin, source or os.path.basename(cur_file), default_status=default_status)
         else:
             raise Exception(f"File {cur_file} does not exists.")
-
-    def import_files(self, files, default_status=DEFAULT_STATUS):
-        output = {}
-        for cur_file in files:
-            output[cur_file] = self.import_file(cur_file, default_status=default_status)
-
-        return output

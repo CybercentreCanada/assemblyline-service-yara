@@ -22,7 +22,11 @@ RUN make install
 
 RUN pip install \
   yara-python \
-  assemblyline_client
+  assemblyline_client \
+  gitpython
+
+# Switch to assemblyline user
+USER assemblyline
 
 # Copy Yara service code
 WORKDIR /opt/al_service

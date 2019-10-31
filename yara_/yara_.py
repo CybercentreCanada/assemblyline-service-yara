@@ -12,6 +12,7 @@ from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
 
 Classification = forge.get_classification()
+FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY')
 
 
 class YaraMetadata(object):
@@ -106,9 +107,9 @@ class Yara(ServiceBase):
         self.rule_path = self.config.get('RULE_PATH', 'rules.yar')
         self.signature_query = self.config.get('SIGNATURE_QUERY', 'meta.al_status:DEPLOYED OR meta.al_status:NOISY')
         self.verify = self.config.get('VERIFY', False)
-        self.yara_externals = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
+        self.yara_externals = {f'al_{x}': x for x in ['submitter', 'mime', 'file_type']}
         self.update_client = None
-        self.yara_version = "3.10.0"
+        self.yara_version = "3.11.0"
 
     def _add_resultinfo_for_match(self, result: Result, match):
         """
@@ -326,8 +327,8 @@ class Yara(ServiceBase):
         if len(string) >= 2 and len(string) % 2 == 0:
             is_wide_char = True
             for (i, c) in enumerate(string):
-                if ((i % 2 == 0 and ord(c) == 0) or
-                        (i % 2 == 1 and ord(c) != 0)):
+                if ((i % 2 == 0 and c == 0) or
+                        (i % 2 == 1 and c != 0)):
                     is_wide_char = False
                     break
         else:
@@ -340,30 +341,30 @@ class Yara(ServiceBase):
         """Convert classification to uppercase."""
         almeta.classification = almeta.classification.upper()
 
-    def _load_rules(self, yara_rules_dirs, **_):
+    def _load_rules(self):
         """
         Load Yara rules files. This function will check the updates directory and try to load the latest set of
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
-        if not os.path.exists(yara_rules_dirs):
+        if not os.path.exists(FILE_UPDATE_DIRECTORY):
             raise Exception("Yara rules directory not found")
 
-        yara_rules_dirs = sorted(os.listdir(yara_rules_dirs), reverse=True)
+        yara_rules_dirs = sorted(os.listdir(FILE_UPDATE_DIRECTORY), reverse=True)
 
         rules = None
         for yara_rules_dir in yara_rules_dirs:
             # Find all the .yar files
-            yar_files = glob.glob(os.path.join(yara_rules_dir, '*.yar'))
+            yar_files = os.listdir(os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir))
             if not yar_files:
                 continue
 
             # Load all files in the dir, each file will have its own Yara namespace
             # Each file is expected to be from a different repo source
             # Using namespaces, allows us to handle Yara rule name conflicts
-            filepaths = {os.path.basename(x): x for x in yar_files}
+            filepaths = {os.path.basename(x): os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir, x) for x in yar_files}
 
             self.log.info(f"YARA loaded rules from: {yara_rules_dir}")
-            rules = yara.compile(filepaths=filepaths, externals=self.get_yara_externals)
+            rules = yara.compile(filepaths=filepaths, externals=self.yara_externals)
 
             if rules:
                 with self.initialization_lock:
@@ -390,14 +391,19 @@ class Yara(ServiceBase):
                 sval = self.task.get(i)
             except Exception:
                 sval = None
+            # if not sval:
+            #     # Check metadata dictionary
+            #     smeta = self.task.metadata
+            #     if isinstance(smeta, dict):
+            #         sval = smeta.get(i, None)
             if not sval:
-                # Check metadata dictionary
-                smeta = self.task.metadata
+                # Check params dictionary
+                smeta = self.task.service_config
                 if isinstance(smeta, dict):
                     sval = smeta.get(i, None)
             if not sval:
-                # Check params dictionary
-                smeta = self.task.params
+                # Check temp submission data
+                smeta = self.task.temp_submission_data
                 if isinstance(smeta, dict):
                     sval = smeta.get(i, None)
             # Create dummy value if item not found
@@ -441,10 +447,8 @@ class Yara(ServiceBase):
         yara.set_config(max_strings_per_rule=40000, stack_size=65536)
 
         try:
-            yara_rules_dir = os.environ.get('UPDATES_DIR')  # TODO: whats the env variable called?
-
             # Load the rules
-            self._load_rules(yara_rules_dir)
+            self._load_rules()
 
         except Exception as e:
             self.log.warning(f"Something went wrong while trying to load YARA rules: {str(e)}")

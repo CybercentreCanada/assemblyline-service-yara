@@ -18,32 +18,33 @@ FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY')
 class YaraMetadata(object):
     def __init__(self, match):
         meta = match.meta
-        self.rule_name = match.rule
-        self.rule_id = match.meta.get('id', None)
-        self.rule_group = match.meta.get('rule_group', None)
-        self.rule_version = match.meta.get('rule_version', 1)
-        self.description = match.meta.get('description', None)
-        self.classification = match.meta.get('classification', Classification.UNRESTRICTED)
-        self.organisation = meta.get('organisation', None)
+        self.name = match.rule
+        self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', f'{match.namespace}.{match.rule}')))
+        self.category = meta.get('category', meta.get('rule_group', 'info')).lower()
+        self.version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
+        self.description = meta.get('description', None)
+        self.classification = meta.get('classification', Classification.UNRESTRICTED)
+        self.source = meta.get('source', meta.get('organisation', None))
         self.summary = meta.get('summary', None)
         self.description = meta.get('description', None)
         self.score_override = meta.get('al_score', None)
-        self.poc = meta.get('poc', None)
-        self.weight = meta.get('weight', 0)  # legacy rule format
-        self.al_status = meta.get('al_status', "DEPLOYED")
-
-        self.ta_type = meta.get('ta_type', None)
+        self.author = meta.get('author', meta.get('poc', None))
+        self.status = meta.get('status', None)  # Status assigned by the rule creator
+        self.al_status = meta.get(self.status, meta.get('al_status', 'TESTING'))
+        self.actor_type = meta.get('actor_type', meta.get('ta_type', None))
+        self.mitre_att = meta.get('mitre_att', None)
+        self.mitre_group = meta.get('mitre_group', None)
 
         def _safe_split(comma_sep_list):
             return [e for e in comma_sep_list.split(',') if e]
 
-        self.actors = _safe_split(match.meta.get('used_by', ''))
-        self.summary = _safe_split(match.meta.get('summary', ''))
-        self.exploits = _safe_split(match.meta.get('exploit', ''))
+        self.actors = _safe_split(meta.get('used_by', ''))
+        self.summary = _safe_split(meta.get('summary', ''))
+        self.exploits = _safe_split(meta.get('exploit', ''))
 
         # parse and populate implant list
         self.implants = []
-        for implant in match.meta.get('implant', '').split(','):
+        for implant in meta.get('implant', '').split(','):
             if not implant:
                 continue
             tokens = implant.split(':')
@@ -94,7 +95,7 @@ class Yara(ServiceBase):
         technique=2,
         exploit=3,
         tool=4,
-        implant=5,
+        malware=5,
     )
 
     def __init__(self, config=None):
@@ -130,13 +131,14 @@ class Yara(ServiceBase):
             almeta.score_override = 0
 
         section = ResultSection('', classification=almeta.classification)
-        section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.rule_group, 1), signature=match.rule)
-        section.add_tag('file.rule.yara', match.rule)
+        section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1),
+                              signature=f'{match.namespace}.{match.rule}', attack_id=almeta.mitre_att)
+        section.add_tag('file.rule.yara', f'{match.namespace}.{match.rule}')
 
-        title_elements = [match.rule, ]
+        title_elements = [f"[{match.namespace}] {match.rule}", ]
 
-        if almeta.ta_type:
-            section.add_tag('attribution.actor', almeta.ta_type)
+        if almeta.actor_type:
+            section.add_tag('attribution.actor', almeta.actor_type)
 
         # Implant Tags
         implant_title_elements = []
@@ -186,14 +188,14 @@ class Yara(ServiceBase):
 
         json_body = dict()
 
-        if almeta.rule_id and almeta.rule_version and almeta.poc:
+        if almeta.id and almeta.version and almeta.author:
             json_body.update(dict(
-                rule_id=almeta.rule_id,
-                rule_version=almeta.rule_version,
-                poc=almeta.poc,
+                id=almeta.id,
+                version=almeta.version,
+                author=almeta.author,
             ))
 
-            # section.add_line(f"Rule Info : {almeta.rule_id} r.{almeta.rule_version} by {almeta.poc}")
+            # section.add_line(f"Rule Info : {almeta.id} r.{almeta.version} by {almeta.author}")
 
         if almeta.description:
             json_body['description'] = almeta.description
@@ -349,7 +351,7 @@ class Yara(ServiceBase):
         if not os.path.exists(FILE_UPDATE_DIRECTORY):
             raise Exception("Yara rules directory not found")
 
-        yara_rules_dirs = sorted(os.listdir(FILE_UPDATE_DIRECTORY), reverse=True)
+        yara_rules_dirs = [x for x in sorted(os.listdir(FILE_UPDATE_DIRECTORY), reverse=True) if not x.startswith('.tmp')]
 
         rules = None
         for yara_rules_dir in yara_rules_dirs:
@@ -361,7 +363,7 @@ class Yara(ServiceBase):
             # Load all files in the dir, each file will have its own Yara namespace
             # Each file is expected to be from a different repo source
             # Using namespaces, allows us to handle Yara rule name conflicts
-            filepaths = {os.path.basename(x): os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir, x) for x in yar_files}
+            filepaths = {os.path.splitext(os.path.basename(x))[0]: os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir, x) for x in yar_files}
 
             self.log.info(f"YARA loaded rules from: {yara_rules_dir}")
             rules = yara.compile(filepaths=filepaths, externals=self.yara_externals)
@@ -451,6 +453,6 @@ class Yara(ServiceBase):
             self._load_rules()
 
         except Exception as e:
-            self.log.warning(f"Something went wrong while trying to load YARA rules: {str(e)}")
+            raise Exception(f"Something went wrong while trying to load YARA rules: {str(e)}")
 
         self.log.info(f"YARA started with service version: {self.get_service_version()}")

@@ -69,7 +69,7 @@ class YaraImporter(object):
 
             name = self.get_signature_name(signature)
             classification = meta.get('classification', self.classification.UNRESTRICTED)
-            signature_id = meta.get('id', meta.get('rule_id', meta.get('signature_id', f'{source}_{name}')))
+            signature_id = meta.get('id', meta.get('rule_id', meta.get('signature_id', f'{source}.{name}')))
             version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
 
             status = meta.get('status', meta.get('al_status', default_status))
@@ -83,7 +83,7 @@ class YaraImporter(object):
             sig = Signature(dict(
                 classification=classification,
                 data=signature,
-                name=name,
+                name=f"[{source}] {name}",
                 order=order,
                 revision=int(float(version)),
                 signature_id=signature_id,
@@ -94,7 +94,7 @@ class YaraImporter(object):
             r = self.update_client.signature.add_update(sig.as_primitives())
 
             if r['success']:
-                self.log.info(f"Successfully added signature {name} (ID: {r['id']}")
+                self.log.info(f"Successfully added signature {name} (ID: {r['id']})")
             else:
                 self.log.warning(f"Failed to add signature {name}")
 
@@ -118,11 +118,14 @@ class YaraImporter(object):
                     signatures.append("\n".join(current_signature))
                     current_signature = []
                     in_rule = False
-
-            if temp_line.startswith("rule ") or temp_line.startswith("private rule ") \
-                    or temp_line.startswith("global rule ") or temp_line.startswith("global private rule "):
-                in_rule = True
-                current_signature.append(line)
+            else:
+                if temp_line.startswith("import ") \
+                        or temp_line.startswith("rule ") \
+                        or temp_line.startswith("private rule ") \
+                        or temp_line.startswith("global rule ") \
+                        or temp_line.startswith("global private rule "):
+                    in_rule = True
+                    current_signature.append(line)
 
         return signatures
 

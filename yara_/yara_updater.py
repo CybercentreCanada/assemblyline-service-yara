@@ -1,5 +1,5 @@
 import glob
-import hashlib
+import itertools
 import logging
 import os
 import re
@@ -9,6 +9,7 @@ import time
 from typing import List, Dict, Any, Optional, Set
 from urllib.parse import urlparse
 from zipfile import ZipFile
+
 import requests
 import yaml
 import yara
@@ -33,13 +34,13 @@ UPDATE_DIR = os.path.join(tempfile.gettempdir(), 'yara_updates')
 YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
 
 
-def _compile_rules(rules_file, source_name):
+def _compile_rules(rules_file):
     """
     Saves Yara rule content to file, validates the content with Yara Validator, and uses Yara python to compile
     the rule set.
 
     Args:
-        rules_txt: Yara rule file content.
+        rules_file: Yara rule file content.
 
     Returns:
         Compiled rules, compiled rules md5.
@@ -134,12 +135,27 @@ def git_clone_repo(source: Dict[str, Any]) -> List[str] and List[str]:
     name = source['name']
     url = source['uri']
     pattern = source.get('pattern', None)
+    key = source.get('public_key', None)
 
     clone_dir = os.path.join(UPDATE_DIR, name)
     if os.path.exists(clone_dir):
         shutil.rmtree(clone_dir)
 
-    repo = Repo.clone_from(url, clone_dir)
+    if key:
+        LOGGER.info(f"key found for {url}")
+        # Save the key to a file
+        git_ssh_identity_file = os.path.join(tempfile.gettempdir(), 'id_rsa')
+        with open(git_ssh_identity_file, 'w') as key_fh:
+            key_fh.write(key)
+        os.chmod(git_ssh_identity_file, 0o0400)
+
+        git_ssh_cmd = f"ssh -i {git_ssh_identity_file}"
+        Repo.clone_from(url, clone_dir, env={"GIT_SSH_COMMAND": git_ssh_cmd})
+
+        # with Git().custom_environment(GIT_SSH_COMMAND=git_ssh_cmd):
+        #     Repo.clone_from(url, clone_dir)
+    else:
+        Repo.clone_from(url, clone_dir)
 
     if pattern:
         files = [os.path.join(clone_dir, f) for f in os.listdir(clone_dir) if re.match(pattern, f)]
@@ -154,8 +170,11 @@ def git_clone_repo(source: Dict[str, Any]) -> List[str] and List[str]:
 def replace_include(include, dirname, processed_files: Set[str]):
     include_path = re.match(r"include [\'\"](.{4,})[\'\"]", include).group(1)
     full_include_path = os.path.normpath(os.path.join(dirname, include_path))
+    if not os.path.exists(full_include_path):
+        LOGGER.info(f"File doesn't exist: {full_include_path}")
+        return [], processed_files
 
-    temp_lines = []
+    temp_lines = ['\n']  # Start with a new line to separate rules
     if full_include_path not in processed_files:
         processed_files.add(full_include_path)
         with open(full_include_path, 'r') as include_f:
@@ -163,10 +182,14 @@ def replace_include(include, dirname, processed_files: Set[str]):
 
         for i, line in enumerate(lines):
             if line.startswith("include"):
-                lines, processed_files = replace_include(line, dirname, processed_files)
+                new_dirname = os.path.dirname(full_include_path)
+                lines, processed_files = replace_include(line, new_dirname, processed_files)
                 temp_lines.extend(lines)
             else:
                 temp_lines.append(line)
+
+    # Clean up any adjacent duplicated lines
+    # temp_lines = [k for k, g in itertools.groupby(temp_lines)]  # TODO: might not be needed anymore
 
     return temp_lines, processed_files
 
@@ -178,16 +201,16 @@ def yara_update() -> None:
     if os.path.exists(UPDATE_CONFIGURATION_PATH):
         with open(UPDATE_CONFIGURATION_PATH, 'r') as yml_fh:
             update_config = yaml.safe_load(yml_fh)
-
-    sources = update_config.get('sources', None)
-
-    # Exit if no update sources given
-    if 'sources' not in update_config.keys():
+    else:
+        LOGGER.exception(f"Update configuration file doesn't exist: {UPDATE_CONFIGURATION_PATH}")
         exit()
 
-    update_start_time = now_as_iso()
-    sources = {source['name']: source for source in update_config['sources']}
+    # Exit if no update sources given
+    if 'sources' not in update_config.keys() or not update_config['sources']:
+        exit()
 
+    sources = {source['name']: source for source in update_config['sources']}
+    update_start_time = now_as_iso()
     files_sha256 = []
 
     al_combined_yara_rules_dir = os.path.join(tempfile.gettempdir(), 'al_combined_yara_rules')
@@ -263,7 +286,7 @@ def yara_update() -> None:
             with open(rules_file, 'w') as f:
                 f.write(open(os.path.join(al_combined_yara_rules_dir, x), 'r').read())
 
-            _compile_rules(rules_file, source_name)
+            _compile_rules(rules_file)
             yara_importer.import_file(rules_file, source_name)
         except Exception as e:
             raise e

@@ -69,12 +69,12 @@ class YaraImporter(object):
 
             name = self.get_signature_name(signature)
             classification = meta.get('classification', self.classification.UNRESTRICTED)
-            signature_id = meta.get('id', meta.get('rule_id', meta.get('signature_id', f'{source}.{name}')))
+            signature_id = meta.get('id', meta.get('rule_id', meta.get('signature_id', name)))
             version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
 
             status = meta.get('status', meta.get('al_status', default_status))
 
-            # Convert CCCS YARA status to AL status
+            # Convert CCCS YARA status to AL signature status
             if status == "RELEASED":
                 status = "DEPLOYED"
             elif status == "DEPRECATED":
@@ -86,7 +86,7 @@ class YaraImporter(object):
                 name=f"[{source}] {name}",
                 order=order,
                 revision=int(float(version)),
-                signature_id=signature_id,
+                signature_id=f'{source}.{signature_id}',
                 source=source,
                 status=status,
                 type="yara",

@@ -212,7 +212,7 @@ class Yara(ServiceBase):
         if string_match_data:
             json_body['string_hits'] = string_match_data
 
-        section.set_body(json.dumps(json_body), body_format=BODY_FORMAT.JSON)
+        section.set_body(json.dumps(json_body), body_format=BODY_FORMAT.KEY_VALUE)
 
         result.add_section(section)
         # result.order_results_by_score() TODO: should v4 support this?
@@ -271,18 +271,18 @@ class Yara(ServiceBase):
                 result_dict[entry_name] = result_list
                 continue
 
-            string_hit = f"Found {entry_name} string: '{string_value} [@ {string_offset}]" \
+            string_hit = f"{entry_name}: '{string_value} [@ {string_offset}]" \
                          f"{' (' + str(count) + 'x)' if count > 1 else ''}'"
             string_hits.append(string_hit)
 
         for entry_name, result_list in result_dict.items():
             for result in result_list[:5]:
-                string_hit = f"Found {entry_name} string: '{result[0]}' [@ {result[1]}]"\
+                string_hit = f"{entry_name}: '{result[0]}' [@ {result[1]}]"\
                              f"{' (' + str(result[2]) + 'x)' if result[2] > 1 else ''}"
                 string_hits.append(string_hit)
             more = len(result_list[5:])
             if more:
-                string_hits.append(f"Found {entry_name} string {more} more time{'s' if more > 1 else ''}")
+                string_hits.append(f"{entry_name} x{more}")
 
         return string_hits
 

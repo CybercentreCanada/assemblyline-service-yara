@@ -160,7 +160,7 @@ def git_clone_repo(source: Dict[str, Any]) -> List[str] and List[str]:
     if pattern:
         files = [os.path.join(clone_dir, f) for f in os.listdir(clone_dir) if re.match(pattern, f)]
     else:
-        files = glob.glob(os.path.join(clone_dir, '*.yar'))
+        files = glob.glob(os.path.join(clone_dir, '*.yar*'))
 
     files_sha256 = [get_sha256_for_file(x) for x in files]
 
@@ -252,7 +252,7 @@ def yara_update() -> None:
                     temp_lines.append(f_line)
 
             # Save all rules from source into single file
-            file_name = os.path.join(al_combined_yara_rules_dir, f"{source_name}_{file_basename}.yar")
+            file_name = os.path.join(al_combined_yara_rules_dir, f"{source_name}.yar")
             with open(file_name, 'w') as f:
                 f.writelines(temp_lines)
 

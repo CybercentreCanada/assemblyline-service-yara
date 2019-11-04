@@ -21,12 +21,12 @@ class YaraMetadata(object):
         self.name = match.rule
         self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', f'{match.namespace}.{match.rule}')))
         self.category = meta.get('category', meta.get('rule_group', 'info')).lower()
+        self.malware_type = meta.get('malware_type', None)
         self.version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
         self.description = meta.get('description', None)
         self.classification = meta.get('classification', Classification.UNRESTRICTED)
         self.source = meta.get('source', meta.get('organisation', None))
         self.summary = meta.get('summary', None)
-        self.description = meta.get('description', None)
         self.score_override = meta.get('al_score', None)
         self.author = meta.get('author', meta.get('poc', None))
         self.status = meta.get('status', None)  # Status assigned by the rule creator
@@ -38,45 +38,58 @@ class YaraMetadata(object):
         def _safe_split(comma_sep_list):
             return [e for e in comma_sep_list.split(',') if e]
 
+        # Specifics about the category
+        self.info = meta.get('info', None)
+        self.technique = meta.get('technique', None)
+        self.exploit = meta.get('exploit', None)
+        self.tool = meta.get('tool', None)
+        self.malware = meta.get('malware', meta.get('implant', None))
+
         self.actors = _safe_split(meta.get('used_by', ''))
         self.summary = _safe_split(meta.get('summary', ''))
         self.exploits = _safe_split(meta.get('exploit', ''))
 
-        # parse and populate implant list
-        self.implants = []
-        for implant in meta.get('implant', '').split(','):
-            if not implant:
-                continue
-            tokens = implant.split(':')
-            implant_name = tokens[0]
-            implant_family = tokens[1] if (len(tokens) == 2) else ''
-            self.implants.append((implant_name.strip().upper(),
-                                  implant_family.strip().upper()))
+        # Parse and populate malware list
+        self.malwares = []
+        if self.malware:
+            if ',' in self.malware:
+                for malware in self.malware.split(','):
+                    tokens = malware.split(':')
+                    malware_name = tokens[0]
+                    malware_family = tokens[1] if (len(tokens) == 2) else ''
+                    self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
+            else:
+                self.malwares.append((self.malware, self.malware_type or ''))
 
-        # parse and populate technique info
+        # Parse and populate technique info
         self.techniques = []
-        for technique in meta.get('technique', '').split(','):
-            if not technique:
-                continue
-            tokens = technique.split(':')
-            category = ''
-            if len(tokens) == 2:
-                category = tokens[0]
-                name = tokens[1]
+        if self.technique:
+            if ',' in self.technique:
+                for technique in self.technique.split(','):
+                    tokens = technique.split(':')
+                    category = ''
+                    if len(tokens) == 2:
+                        category = tokens[0]
+                        name = tokens[1]
+                    else:
+                        name = tokens[0]
+                    self.techniques.append((category.strip(), name.strip()))
             else:
-                name = tokens[0]
-            self.techniques.append((category.strip(), name.strip()))
+                self.techniques.append((self.technique, self.technique))
 
-        self.info = []
-        for info in meta.get('info', '').split(','):
-            if not info:
-                continue
-            tokens = info.split(':', 1)
-            if len(tokens) == 2:
-                # category, value
-                self.info.append((tokens[0], tokens[1]))
+        # Parse and populate info
+        self.infos = []
+        if self.info:
+            if ',' in self.info:
+                for info in self.info.split(','):
+                    tokens = info.split(':', 1)
+                    if len(tokens) == 2:
+                        # category, value
+                        self.infos.append((tokens[0], tokens[1]))
+                    else:
+                        self.infos.append((None, tokens[0]))
             else:
-                self.info.append((None, tokens[0]))
+                self.infos.append((self.info, self.info))
 
 
 class Yara(ServiceBase):
@@ -105,12 +118,7 @@ class Yara(ServiceBase):
         self.initialization_lock = threading.RLock()
         self.task = None
 
-        self.rule_path = self.config.get('RULE_PATH', 'rules.yar')
-        self.signature_query = self.config.get('SIGNATURE_QUERY', 'meta.al_status:DEPLOYED OR meta.al_status:NOISY')
-        self.verify = self.config.get('VERIFY', False)
         self.yara_externals = {f'al_{x}': x for x in ['submitter', 'mime', 'file_type']}
-        self.update_client = None
-        self.yara_version = "3.11.0"
 
     def _add_resultinfo_for_match(self, result: Result, match):
         """
@@ -140,9 +148,9 @@ class Yara(ServiceBase):
         if almeta.actor_type:
             section.add_tag('attribution.actor', almeta.actor_type)
 
-        # Implant Tags
+        # Malware Tags
         implant_title_elements = []
-        for (implant_name, implant_family) in almeta.implants:
+        for (implant_name, implant_family) in almeta.malwares:
             if implant_name:
                 implant_title_elements.append(implant_name)
                 section.add_tag('attribution.implant', implant_name)
@@ -172,7 +180,7 @@ class Yara(ServiceBase):
                 section.add_tag(technique_type, name)
                 summary_elements.add(technique_description)
 
-        for (category, value) in almeta.info:
+        for (category, value) in almeta.infos:
             if category == 'compiler':
                 section.add_tag('file.compiler', value)
             elif category == 'libs':
@@ -188,6 +196,8 @@ class Yara(ServiceBase):
 
         json_body = dict()
 
+        json_body['name'] = f"[{match.namespace}] {match.rule}"
+
         if almeta.id and almeta.version and almeta.author:
             json_body.update(dict(
                 id=almeta.id,
@@ -195,11 +205,8 @@ class Yara(ServiceBase):
                 author=almeta.author,
             ))
 
-            # section.add_line(f"Rule Info : {almeta.id} r.{almeta.version} by {almeta.author}")
-
         if almeta.description:
             json_body['description'] = almeta.description
-            # section.add_line(f"Description: {almeta.description}")
 
         string_match_data = self._add_string_match_data(match)
         if string_match_data:
@@ -267,18 +274,15 @@ class Yara(ServiceBase):
             string_hit = f"Found {entry_name} string: '{string_value} [@ {string_offset}]" \
                          f"{' (' + str(count) + 'x)' if count > 1 else ''}'"
             string_hits.append(string_hit)
-            # section.add_line(string_hit)
 
         for entry_name, result_list in result_dict.items():
             for result in result_list[:5]:
                 string_hit = f"Found {entry_name} string: '{result[0]}' [@ {result[1]}]"\
                              f"{' (' + str(result[2]) + 'x)' if result[2] > 1 else ''}"
                 string_hits.append(string_hit)
-                # section.add_line(string_hit)
             more = len(result_list[5:])
             if more:
                 string_hits.append(f"Found {entry_name} string {more} more time{'s' if more > 1 else ''}")
-                # section.add_line(f"Found {entry_name} string {more} more time{'s' if more > 1 else ''}")
 
         return string_hits
 

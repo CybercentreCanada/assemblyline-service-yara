@@ -149,7 +149,7 @@ def git_clone_repo(source: Dict[str, Any]) -> List[str] and List[str]:
             key_fh.write(key)
         os.chmod(git_ssh_identity_file, 0o0400)
 
-        git_ssh_cmd = f"ssh -i {git_ssh_identity_file}"
+        git_ssh_cmd = f"ssh -oStrictHostKeyChecking=no -i {git_ssh_identity_file}"
         Repo.clone_from(url, clone_dir, env={"GIT_SSH_COMMAND": git_ssh_cmd})
 
         # with Git().custom_environment(GIT_SSH_COMMAND=git_ssh_cmd):

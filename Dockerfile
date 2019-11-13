@@ -22,7 +22,6 @@ RUN make install
 
 RUN pip install \
   yara-python \
-  assemblyline_client \
   gitpython
 
 # Switch to assemblyline user

@@ -359,18 +359,20 @@ class Yara(ServiceBase):
 
         rules = None
         for yara_rules_dir in yara_rules_dirs:
-            # Find all the .yar files
-            yar_files = os.listdir(os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir))
-            if not yar_files:
-                continue
-
             # Load all files in the dir, each file will have its own Yara namespace
             # Each file is expected to be from a different repo source
             # Using namespaces, allows us to handle Yara rule name conflicts
-            filepaths = {os.path.splitext(os.path.basename(x))[0]: os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir, x) for x in yar_files}
+            yar_files = {}
+            for path_in_dir, _, files in os.walk(os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir)):
+                for filename in files:
+                    filepath = os.path.join(FILE_UPDATE_DIRECTORY, path_in_dir, filename)
+                    yar_files[os.path.splitext(os.path.basename(filename))[0]] = filepath
+
+            if not yar_files:
+                continue
 
             self.log.info(f"YARA loaded rules from: {yara_rules_dir}")
-            rules = yara.compile(filepaths=filepaths, externals=self.yara_externals)
+            rules = yara.compile(filepaths=yar_files, externals=self.yara_externals)
 
             if rules:
                 with self.initialization_lock:

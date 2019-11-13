@@ -310,8 +310,7 @@ def yara_update() -> None:
         # Create the response yaml
         with open(os.path.join(UPDATE_OUTPUT_PATH, 'response.yaml'), 'w') as yml_fh:
             yaml.safe_dump(dict(
-                previous_update=update_start_time,
-                previous_hash='new_hash',
+                hash='new_hash',  # TODO if this hash doesn't change, the updater doesn't restart the service
             ), yml_fh)
 
 

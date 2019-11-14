@@ -3,7 +3,6 @@ import os
 import threading
 from typing import List
 
-import glob
 import yara
 
 from assemblyline.common import forge
@@ -315,7 +314,7 @@ class Yara(ServiceBase):
         res = []
         for (i, c) in enumerate(string):
             if i % 2 == 0:
-                res.append(c)
+                res.append(str(c))
 
         return ''.join(res)
 

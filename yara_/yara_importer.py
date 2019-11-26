@@ -69,7 +69,7 @@ class YaraImporter(object):
 
             name = self.get_signature_name(signature)
             classification = meta.get('classification', self.classification.UNRESTRICTED)
-            signature_id = meta.get('id', meta.get('rule_id', meta.get('signature_id', name)))
+            signature_id = meta.get('id', meta.get('rule_id', meta.get('signature_id', None)))
             version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
 
             status = meta.get('status', meta.get('al_status', default_status))
@@ -83,10 +83,10 @@ class YaraImporter(object):
             sig = Signature(dict(
                 classification=classification,
                 data=signature,
-                name=f"[{source}] {name}",
+                name=name,
                 order=order,
                 revision=int(float(version)),
-                signature_id=f'{source}.{signature_id}',
+                signature_id=signature_id or name,
                 source=source,
                 status=status,
                 type="yara",

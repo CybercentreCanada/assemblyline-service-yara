@@ -95,11 +95,12 @@ class YaraImporter(object):
 
             if r['success']:
                 self.log.info(f"Successfully added signature {name} (ID: {r['id']})")
+                saved_sigs.append(sig)
+                order += 1
             else:
                 self.log.warning(f"Failed to add signature {name}")
 
-            saved_sigs.append(sig)
-            order += 1
+        self.log.info(f"Imported {order - 1} signatures from {source} into Assemblyline")
 
         return saved_sigs
 

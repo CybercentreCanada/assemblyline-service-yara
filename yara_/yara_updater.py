@@ -135,7 +135,7 @@ def git_clone_repo(source: Dict[str, Any]) -> List[str] and List[str]:
     name = source['name']
     url = source['uri']
     pattern = source.get('pattern', None)
-    key = source.get('public_key', None)
+    key = source.get('private_key', None)
 
     clone_dir = os.path.join(UPDATE_DIR, name)
     if os.path.exists(clone_dir):

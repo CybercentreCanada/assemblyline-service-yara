@@ -1,5 +1,4 @@
 import glob
-import itertools
 import logging
 import os
 import re

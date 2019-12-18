@@ -236,6 +236,8 @@ class Yara(ServiceBase):
 
         result_dict = {}
         for string_value, string_list in string_dict.items():
+            if isinstance(string_value, bytes):
+                string_value = string_value.decode()
             count = len(string_list)
             string_offset_list = []
             ident = ''

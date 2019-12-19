@@ -455,7 +455,10 @@ class Yara(ServiceBase):
 
     def get_service_version(self):
         basic_version = super(Yara, self).get_service_version()
-        return f'{basic_version}.r{self.rules_md5 or "0"}'
+        if self.rules_md5:
+            return f'{basic_version}.r{self.rules_md5}'
+        else:
+            return basic_version
 
     def start(self):
         # Set configuration flags to 4 times the default

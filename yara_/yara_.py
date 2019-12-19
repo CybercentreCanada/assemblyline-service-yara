@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import threading
@@ -6,6 +7,7 @@ from typing import List
 import yara
 
 from assemblyline.common import forge
+from assemblyline.common.digests import get_sha256_for_file
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
@@ -366,9 +368,11 @@ class Yara(ServiceBase):
             # Each file is expected to be from a different repo source
             # Using namespaces, allows us to handle Yara rule name conflicts
             yar_files = {}
+            all_sha256s = []
             for path_in_dir, _, files in os.walk(os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir)):
                 for filename in files:
                     filepath = os.path.join(FILE_UPDATE_DIRECTORY, path_in_dir, filename)
+                    all_sha256s.append(get_sha256_for_file(filepath))
                     yar_files[os.path.splitext(os.path.basename(filename))[0]] = filepath
 
             if not yar_files:
@@ -380,7 +384,7 @@ class Yara(ServiceBase):
             if rules:
                 with self.initialization_lock:
                     self.rules = rules
-                    # self.rules_md5 = rules_md5
+                    self.rules_md5 = hashlib.md5(' '.join(sorted(all_sha256s)).encode('utf-8')).hexdigest()
                     return
 
         if not rules:

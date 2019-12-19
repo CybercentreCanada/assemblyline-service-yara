@@ -237,7 +237,7 @@ class Yara(ServiceBase):
         result_dict = {}
         for string_value, string_list in string_dict.items():
             if isinstance(string_value, bytes):
-                string_value = string_value.decode()
+                string_value = safe_str(string_value)
             count = len(string_list)
             string_offset_list = []
             ident = ''
@@ -279,7 +279,7 @@ class Yara(ServiceBase):
         for entry_name, result_list in result_dict.items():
             for result in result_list[:5]:
                 if isinstance(result[0], bytes):
-                    result[0] = result[0].decode()
+                    result[0] = safe_str(result[0])
                 string_hit = f"{entry_name}: '{result[0]}' [@ {result[1]}]"\
                              f"{' (' + str(result[2]) + 'x)' if result[2] > 1 else ''}"
                 string_hits.append(string_hit)

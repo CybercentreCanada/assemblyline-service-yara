@@ -11,13 +11,11 @@ from zipfile import ZipFile
 
 import requests
 import yaml
-import yara
-from assemblyline_client import Client
+from assemblyline_client import get_client
 from git import Repo
 
 from assemblyline.common import log as al_log
 from assemblyline.common.digests import get_sha256_for_file
-from assemblyline.common.isotime import now_as_iso
 from yara_.yara_importer import YaraImporter
 from yara_.yara_validator import YaraValidator
 
@@ -46,23 +44,9 @@ def _compile_rules(rules_file):
     """
     try:
         validate = YaraValidator(externals=YARA_EXTERNALS, logger=LOGGER)
-        edited = validate.validate_rules(rules_file)
+        validate.validate_rules(rules_file)
     except Exception as e:
         raise e
-    # Grab the final output if Yara Validator found problem rules
-    # if edited:
-        # with open(rules_file, 'r') as f:
-        #     sdata = f.read()
-        # first_line, clean_data = sdata.split('\n', 1)
-        # if first_line.startswith(prefix):
-        #     last_update = first_line.replace(prefix, '')
-        # else:
-        #     last_update = now_as_iso()
-        #     clean_data = sdata
-
-    # Try to compile the final/cleaned yar file
-    rules = yara.compile(rules_file, externals=YARA_EXTERNALS)
-
     return True
 
 
@@ -73,7 +57,6 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
     :param previous_update:
     :return:
     """
-    name = source['name']
     uri = source['uri']
     username = source.get('username', None)
     password = source.get('password', None)
@@ -111,7 +94,7 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
             # File has not been modified since last update, do nothing
             return
         elif response.ok:
-            file_name = os.path.basename(urlparse(uri).path) # TODO: make filename as source name with extension .yar
+            file_name = os.path.basename(urlparse(uri).path)  # TODO: make filename as source name with extension .yar
             file_path = os.path.join(UPDATE_DIR, file_name)
             with open(file_path, 'wb') as f:
                 f.write(response.content)
@@ -124,7 +107,8 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
     except Exception as e:
         # Catch all other types of exceptions such as ConnectionError, ProxyError, etc.
         LOGGER.info(str(e))
-        exit()  # TODO: Should we exit even if one file fails to download? Or should we continue downloading other files?
+        exit()
+        # TODO: Should we exit even if one file fails to download? Or should we continue downloading other files?
     finally:
         # Close the requests session
         session.close()
@@ -197,6 +181,7 @@ def yara_update() -> None:
     """
     Using an update configuration file as an input, which contains a list of sources, download all the file(s).
     """
+    update_config = {}
     if os.path.exists(UPDATE_CONFIGURATION_PATH):
         with open(UPDATE_CONFIGURATION_PATH, 'r') as yml_fh:
             update_config = yaml.safe_load(yml_fh)
@@ -209,7 +194,6 @@ def yara_update() -> None:
         exit()
 
     sources = {source['name']: source for source in update_config['sources']}
-    update_start_time = now_as_iso()
     files_sha256 = []
 
     al_combined_yara_rules_dir = os.path.join(tempfile.gettempdir(), 'al_combined_yara_rules')
@@ -236,7 +220,6 @@ def yara_update() -> None:
             if file in processed_files:
                 continue
 
-            file_basename = os.path.splitext(os.path.basename(file))[0]
             file_dirname = os.path.dirname(file)
             processed_files.add(os.path.normpath(file))
             with open(file, 'r') as f:
@@ -259,20 +242,12 @@ def yara_update() -> None:
         LOGGER.info('No YARA rule file(s) downloaded')
         exit()
 
-    # new_hash = hashlib.md5(' '.join(sorted(files_sha256)).encode('utf-8')).hexdigest()
-    #
-    # # Check if the new update hash matches the previous update hash
-    # if new_hash == update_config.get('previous_hash', None):
-    #     # Update file(s) not changed, delete the downloaded files and exit
-    #     shutil.rmtree(UPDATE_OUTPUT_PATH, ignore_errors=True)
-    #     exit()
-
     LOGGER.info("YARA rule(s) file(s) successfully downloaded")
 
     server = update_config['ui_server']
     user = update_config['api_user']
     api_key = update_config['api_key']
-    al_client = Client(server, apikey=(user, api_key), verify=False)
+    al_client = get_client(server, apikey=(user, api_key), verify=False)
 
     yara_importer = YaraImporter(al_client)
 

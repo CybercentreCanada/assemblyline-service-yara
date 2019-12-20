@@ -115,7 +115,7 @@ class Yara(ServiceBase):
     def __init__(self, config=None):
         super(Yara, self).__init__(config)
         self.rules = None
-        self.rules_md5 = None
+        self.rules_hash = self._get_rules_hash()
         self.initialization_lock = threading.RLock()
         self.task = None
 
@@ -352,6 +352,29 @@ class Yara(ServiceBase):
         """Convert classification to uppercase."""
         almeta.classification = almeta.classification.upper()
 
+    @staticmethod
+    def _get_rules_hash():
+        if not os.path.exists(FILE_UPDATE_DIRECTORY):
+            raise Exception("Yara rules directory not found")
+
+        yara_rules_dirs = [x for x in sorted(os.listdir(FILE_UPDATE_DIRECTORY), reverse=True) if
+                           not x.startswith('.tmp')]
+
+        all_sha256s = []
+        for yara_rules_dir in yara_rules_dirs:
+            for path_in_dir, _, files in os.walk(os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir)):
+                for filename in files:
+                    filepath = os.path.join(FILE_UPDATE_DIRECTORY, path_in_dir, filename)
+                    all_sha256s.append(get_sha256_for_file(filepath))
+
+        if not all_sha256s:
+            raise Exception("No valid YARA rules files found")
+
+        if len(all_sha256s) == 1:
+            return all_sha256s[0][:7]
+
+        return hashlib.sha256(' '.join(sorted(all_sha256s)).encode('utf-8')).hexdigest()[:7]
+
     def _load_rules(self):
         """
         Load Yara rules files. This function will check the updates directory and try to load the latest set of
@@ -360,35 +383,29 @@ class Yara(ServiceBase):
         if not os.path.exists(FILE_UPDATE_DIRECTORY):
             raise Exception("Yara rules directory not found")
 
-        yara_rules_dirs = [x for x in sorted(os.listdir(FILE_UPDATE_DIRECTORY), reverse=True) if not x.startswith('.tmp')]
+        yara_rules_dirs = [x for x in sorted(os.listdir(FILE_UPDATE_DIRECTORY), reverse=True)
+                           if not x.startswith('.tmp')]
 
-        rules = None
+        yar_files = {}
         for yara_rules_dir in yara_rules_dirs:
             # Load all files in the dir, each file will have its own Yara namespace
             # Each file is expected to be from a different repo source
             # Using namespaces, allows us to handle Yara rule name conflicts
-            yar_files = {}
-            all_sha256s = []
             for path_in_dir, _, files in os.walk(os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir)):
                 for filename in files:
                     filepath = os.path.join(FILE_UPDATE_DIRECTORY, path_in_dir, filename)
-                    all_sha256s.append(get_sha256_for_file(filepath))
                     yar_files[os.path.splitext(os.path.basename(filename))[0]] = filepath
 
-            if not yar_files:
-                continue
-
-            self.log.info(f"YARA loaded rules from: {yara_rules_dir}")
-            rules = yara.compile(filepaths=yar_files, externals=self.yara_externals)
-
-            if rules:
-                with self.initialization_lock:
-                    self.rules = rules
-                    self.rules_md5 = hashlib.md5(' '.join(sorted(all_sha256s)).encode('utf-8')).hexdigest()
-                    return
-
-        if not rules:
+        if not yar_files:
             raise Exception("No valid YARA rules files found")
+
+        rules = yara.compile(filepaths=yar_files, externals=self.yara_externals)
+
+        if rules:
+            with self.initialization_lock:
+                self.rules = rules
+                return
+        raise Exception("No valid YARA rules files found")
 
     # noinspection PyBroadException
     def execute(self, request):
@@ -445,7 +462,7 @@ class Yara(ServiceBase):
                         section.add_line("Too many matches detected with current ruleset. "
                                          "YARA forced to scan in fast mode.")
                         request.result = result
-                    except:
+                    except Exception:
                         self.log.warning(f"YARA internal error 30 detected on submission {self.task.sid}")
                         result = Result()
                         section = ResultSection("YARA scan not completed.")
@@ -455,8 +472,8 @@ class Yara(ServiceBase):
 
     def get_service_version(self):
         basic_version = super(Yara, self).get_service_version()
-        if self.rules_md5:
-            return f'{basic_version}.r{self.rules_md5}'
+        if self.rules_hash:
+            return f'{basic_version}.r{self.rules_hash}'
         else:
             return basic_version
 

@@ -472,7 +472,7 @@ class Yara(ServiceBase):
 
     def get_service_version(self):
         basic_version = super(Yara, self).get_service_version()
-        if self.rules_hash:
+        if self.rules_hash and self.rules_hash not in basic_version:
             return f'{basic_version}.r{self.rules_hash}'
         else:
             return basic_version

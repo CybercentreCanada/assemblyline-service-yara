@@ -69,4 +69,7 @@ update_config:
     allow_internet_access: true
     command: ["python", "-m", "yara_.yara_updater"]
     image: cccs/assemblyline-service-yara:latest
-  update_interval_seconds: 3600
+  sources:
+    - name: yara_rules
+      uri: https://github.com/Yara-Rules/rules.git
+  update_interval_seconds: 86400  # 24 hours

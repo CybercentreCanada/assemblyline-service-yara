@@ -13,7 +13,7 @@ from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
 
 Classification = forge.get_classification()
-FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY')
+FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY', "/mount/updates/")
 
 
 class YaraMetadata(object):

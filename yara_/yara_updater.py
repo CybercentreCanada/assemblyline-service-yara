@@ -186,7 +186,7 @@ def yara_update() -> None:
         with open(UPDATE_CONFIGURATION_PATH, 'r') as yml_fh:
             update_config = yaml.safe_load(yml_fh)
     else:
-        LOGGER.exception(f"Update configuration file doesn't exist: {UPDATE_CONFIGURATION_PATH}")
+        LOGGER.error(f"Update configuration file doesn't exist: {UPDATE_CONFIGURATION_PATH}")
         exit()
 
     # Exit if no update sources given

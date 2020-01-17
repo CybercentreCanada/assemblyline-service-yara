@@ -13,7 +13,7 @@ from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
 
 Classification = forge.get_classification()
-FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY')
+FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY', "/mount/updates/")
 
 
 class YaraMetadata(object):
@@ -352,10 +352,10 @@ class Yara(ServiceBase):
         """Convert classification to uppercase."""
         almeta.classification = almeta.classification.upper()
 
-    @staticmethod
-    def _get_rules_hash():
+    def _get_rules_hash(self):
         if not os.path.exists(FILE_UPDATE_DIRECTORY):
-            raise Exception("Yara rules directory not found")
+            self.log.warning("Yara rules directory not found")
+            return None
 
         yara_rules_dirs = [x for x in sorted(os.listdir(FILE_UPDATE_DIRECTORY), reverse=True) if
                            not x.startswith('.tmp')]
@@ -368,7 +368,8 @@ class Yara(ServiceBase):
                     all_sha256s.append(get_sha256_for_file(filepath))
 
         if not all_sha256s:
-            raise Exception("No valid YARA rules files found")
+            self.log.warning("No valid YARA rules files found")
+            return None
 
         if len(all_sha256s) == 1:
             return all_sha256s[0][:7]

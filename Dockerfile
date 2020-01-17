@@ -24,6 +24,9 @@ RUN pip install \
   yara-python \
   gitpython
 
+# Create update directory
+RUN mkdir -p /mount/updates
+
 # Switch to assemblyline user
 USER assemblyline
 

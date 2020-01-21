@@ -1,7 +1,8 @@
-import datetime
 import logging
 import re
 import subprocess
+
+from assemblyline.common.str_utils import safe_str
 
 
 class YaraValidator(object):
@@ -36,11 +37,10 @@ class YaraValidator(object):
             line = f_lines[find_start]
             if re.match(self.rulestart, line):
                 rule_error_line = (error_line - find_start)
-                rule_start = find_start - 1
                 invalid_rule_name = re.search(self.rulename, line).group(1).strip()
 
                 # Second loop to find end of rule
-                end_idx = 0
+                end_idx = 1
                 while True:
                     find_end = error_line + end_idx
                     if find_end > len(f_lines):
@@ -48,11 +48,9 @@ class YaraValidator(object):
                                         f"Yara Error: {message} Line: {eline}")
                     line = f_lines[find_end]
                     if re.match(self.rulestart, line):
-                        rule_end = find_end - 1
                         # Now we have the start and end, strip from file
-                        rule_file_lines = []
-                        rule_file_lines.extend(f_lines[0:rule_start])
-                        rule_file_lines.extend(f_lines[rule_end:])
+                        rule_file_lines = f_lines[:find_start] + f_lines[find_end:]
+
                         with open(rulefile, 'w') as f:
                             f.writelines(rule_file_lines)
                         break
@@ -75,13 +73,14 @@ class YaraValidator(object):
               "yara.compile('%s', externals=%s).match(data='');" \
               "print('%s')\n" \
               "except yara.SyntaxError as e:" \
-              "print('yara.SyntaxError.{}').format(str(e))\""
+              "print(f'yara.SyntaxError.{ str(e) }')\""
         p = subprocess.Popen(cmd % (rulefile, self.externals, print_val), stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, shell=True, cwd="/tmp")
 
         stdout, stderr = p.communicate()
 
-        stdout, stderr = str(stdout), str(stderr)
+        stdout = safe_str(stdout)
+        stderr = safe_str(stderr)
 
         if print_val not in stdout:
             if stdout.strip().startswith('yara.SyntaxError'):
@@ -112,4 +111,3 @@ class YaraValidator(object):
                     raise e
 
                 continue
-

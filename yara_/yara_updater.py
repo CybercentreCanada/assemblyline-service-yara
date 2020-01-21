@@ -276,6 +276,9 @@ def yara_update() -> None:
     if al_client.signature.update_available(since=previous_update, sig_type='yara')['update_available']:
         LOGGER.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
 
+        if not os.path.exists(UPDATE_OUTPUT_PATH):
+            os.makedirs(UPDATE_OUTPUT_PATH)
+
         temp_zip_file = os.path.join(UPDATE_OUTPUT_PATH, 'temp.zip')
         al_client.signature.download(output=temp_zip_file, query="type:yara AND (status:TESTING OR status:DEPLOYED)")
 

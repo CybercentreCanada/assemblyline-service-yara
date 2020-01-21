@@ -6,7 +6,7 @@ from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.signature import Signature
 
 UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', None)
-DEFAULT_STATUS = "TESTING"
+DEFAULT_STATUS = "DEPLOYED"
 
 
 class YaraImporter(object):
@@ -104,8 +104,7 @@ class YaraImporter(object):
 
         return saved_sigs
 
-    @ staticmethod
-    def _split_signatures(data):
+    def _split_signatures(self, data):
         current_signature = []
         signatures = []
         in_rule = False
@@ -125,8 +124,11 @@ class YaraImporter(object):
                         or temp_line.startswith("private rule ") \
                         or temp_line.startswith("global rule ") \
                         or temp_line.startswith("global private rule "):
-                    in_rule = True
-                    current_signature.append(line)
+                    if "rule" not in temp_line or " " not in self.get_signature_name(temp_line):
+                        in_rule = True
+                        current_signature.append(line)
+                    else:
+                        print(line)
 
         return signatures
 

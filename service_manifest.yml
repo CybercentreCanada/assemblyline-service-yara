@@ -71,5 +71,6 @@ update_config:
     image: cccs/assemblyline-service-yara:latest
   sources:
     - name: yara_rules
+      pattern: ^index.yar$
       uri: https://github.com/Yara-Rules/rules.git
   update_interval_seconds: 86400  # 24 hours

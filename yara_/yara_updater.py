@@ -24,8 +24,8 @@ al_log.init_logging('service_updater')
 LOGGER = logging.getLogger('assemblyline.service_updater')
 
 
-UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', None)
-UPDATE_OUTPUT_PATH = os.environ.get('UPDATE_OUTPUT_PATH', None)
+UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', "/tmp/yara_updater_config.yaml")
+UPDATE_OUTPUT_PATH = os.environ.get('UPDATE_OUTPUT_PATH', "/tmp/yara_updater_output")
 UPDATE_DIR = os.path.join(tempfile.gettempdir(), 'yara_updates')
 
 YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
@@ -182,7 +182,7 @@ def yara_update() -> None:
     Using an update configuration file as an input, which contains a list of sources, download all the file(s).
     """
     update_config = {}
-    if os.path.exists(UPDATE_CONFIGURATION_PATH):
+    if UPDATE_CONFIGURATION_PATH and os.path.exists(UPDATE_CONFIGURATION_PATH):
         with open(UPDATE_CONFIGURATION_PATH, 'r') as yml_fh:
             update_config = yaml.safe_load(yml_fh)
     else:
@@ -215,6 +215,7 @@ def yara_update() -> None:
                 files_sha256.append(sha256)
 
         processed_files = set()
+        mode = "w"
         for file in files:
             # File has already been processed before, skip it to avoid duplication of rules
             if file in processed_files:
@@ -235,8 +236,11 @@ def yara_update() -> None:
 
             # Save all rules from source into single file
             file_name = os.path.join(al_combined_yara_rules_dir, f"{source_name}.yar")
-            with open(file_name, 'w') as f:
+            with open(file_name, mode) as f:
                 f.writelines(temp_lines)
+
+            if mode == "w":
+                mode = "a"
 
     if not files_sha256:
         LOGGER.info('No YARA rule file(s) downloaded')

@@ -95,6 +95,7 @@ class YaraValidator(object):
             try:
                 self.paranoid_rule_check(rulefile)
                 return change
+
             # If something goes wrong, clean rules until valid file given
             except Exception as e:
                 change = True
@@ -103,36 +104,9 @@ class YaraValidator(object):
                     e_line = int(str(e).split('):', 1)[0].split("(", -1)[1])
                     e_message = str(e).split("): ", 1)[1]
                     try:
-                        invalid_rule, reline = self.clean(rulefile, e_line, e_message)
+                        self.clean(rulefile, e_line, e_message)
                     except Exception as ve:
                         raise ve
-
-                    # # If datastore object given, change status of signature to INVALID in Riak
-                    # if datastore:
-                    #     from assemblyline.al.common import forge
-                    #     store = forge.get_datastore()
-                    #     config = forge.get_config()
-                    #     signature_user = config.services.master_list.Yara.config.SIGNATURE_USER
-                    #     # Get the offending sig ID
-                    #     sig_query = "name:{} AND meta.al_status:(DEPLOYED OR NOISY)".format(invalid_rule)
-                    #     sigl = store.list_filtered_signature_keys(sig_query)
-                    #     # Mark and update Riak
-                    #     store = forge.get_datastore()
-                    #     for sig in sigl:
-                    #         sigdata = store.get_signature(sig)
-                    #         # Check this in case someone already marked it as invalid
-                    #         try:
-                    #             if sigdata['meta']['al_status'] == 'INVALID':
-                    #                 continue
-                    #         except KeyError:
-                    #             pass
-                    #         sigdata['meta']['al_status'] = 'INVALID'
-                    #         today = datetime.date.today().isoformat()
-                    #         sigdata['meta']['al_state_change_date'] = today
-                    #         sigdata['meta']['al_state_change_user'] = signature_user
-                    #         sigdata['comments'].append("AL ERROR MSG:{0}. Line:{1}".format(e_message.rstrip().strip(),
-                    #                                                                        reline))
-                    #         store.save_signature(sig, sigdata)
 
                 else:
                     raise e

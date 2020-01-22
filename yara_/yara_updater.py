@@ -1,4 +1,5 @@
 import glob
+import json
 import logging
 import os
 import re
@@ -13,6 +14,7 @@ import requests
 import yaml
 from assemblyline_client import get_client
 from git import Repo
+from plyara import Plyara, utils
 
 from assemblyline.common import log as al_log
 from assemblyline.common.digests import get_sha256_for_file
@@ -48,6 +50,23 @@ def _compile_rules(rules_file):
     except Exception as e:
         raise e
     return True
+
+
+def guess_category(rule_file_name):
+    cat_map = {
+        "technique": ["antidebug", "antivm", "capabilities", "crypto", "packer"],
+        "info": ["info", "deprecated"],
+        "tool": ["webshell"],
+        "exploit": ["cve", "exploit"],
+        "malware": ["malware"]
+    }
+
+    for cat, items in cat_map.items():
+        for item in items:
+            if item in rule_file_name:
+                return cat
+
+    return None
 
 
 def url_download(source: Dict[str, Any], previous_update: Optional[float] = None) -> Optional[str]:
@@ -99,8 +118,8 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
             with open(file_path, 'wb') as f:
                 f.write(response.content)
 
-            # Return the SHA256 of the downloaded file
-            return get_sha256_for_file(file_path)
+            # Return file_path
+            return file_path
     except requests.Timeout:
         # TODO: should we retry?
         pass
@@ -145,9 +164,7 @@ def git_clone_repo(source: Dict[str, Any]) -> List[str] and List[str]:
     else:
         files = glob.glob(os.path.join(clone_dir, '*.yar*'))
 
-    files_sha256 = [get_sha256_for_file(x) for x in files]
-
-    return files, files_sha256
+    return files
 
 
 def replace_include(include, dirname, processed_files: Set[str]):
@@ -194,32 +211,37 @@ def yara_update() -> None:
         exit()
 
     sources = {source['name']: source for source in update_config['sources']}
-    files_sha256 = []
+    files_sha256 = {}
 
-    al_combined_yara_rules_dir = os.path.join(tempfile.gettempdir(), 'al_combined_yara_rules')
-    if not os.path.exists(al_combined_yara_rules_dir):
-        os.makedirs(al_combined_yara_rules_dir)
+    updater_working_dir = os.path.join(tempfile.gettempdir(), 'yara_updater_working_dir')
+    if os.path.exists(updater_working_dir):
+        shutil.rmtree(updater_working_dir)
+    os.makedirs(updater_working_dir)
 
     # Go through each source and download file
     for source_name, source in sources.items():
+        os.makedirs(os.path.join(updater_working_dir, source_name))
+        # 1. Download signatures
+        LOGGER.info(f"Downloading files from: {source['uri']}")
         uri: str = source['uri']
 
         if uri.endswith('.git'):
-            files, sha256 = git_clone_repo(source)
-            if sha256:
-                files_sha256.extend(sha256)
+            files = git_clone_repo(source)
         else:
             previous_update = update_config.get('previous_update', None)
-            files, sha256 = url_download(source, previous_update=previous_update)
-            if sha256:
-                files_sha256.append(sha256)
+            files = [url_download(source, previous_update=previous_update)]
 
         processed_files = set()
+
+        # 2. Aggregate files
+        file_name = os.path.join(updater_working_dir, f"{source_name}.yar")
         mode = "w"
         for file in files:
             # File has already been processed before, skip it to avoid duplication of rules
             if file in processed_files:
                 continue
+
+            LOGGER.info(f"Processing file: {file}")
 
             file_dirname = os.path.dirname(file)
             processed_files.add(os.path.normpath(file))
@@ -234,13 +256,36 @@ def yara_update() -> None:
                 else:
                     temp_lines.append(f_line)
 
+            # guess the type of files that we have in the current file
+            guessed_category = guess_category(file)
+            parser = Plyara()
+            signatures = parser.parse_string("\n".join(temp_lines))
+
+            # Ignore "cuckoo" rules
+            if "cuckoo" in parser.imports:
+                parser.imports.remove("cuckoo")
+
+            # Guess category
+            if guessed_category:
+                for s in signatures:
+                    if 'metadata' not in s:
+                        s['metadata'] = []
+                    s['metadata'].append({'category': guessed_category})
+
             # Save all rules from source into single file
-            file_name = os.path.join(al_combined_yara_rules_dir, f"{source_name}.yar")
             with open(file_name, mode) as f:
-                f.writelines(temp_lines)
+                for s in signatures:
+                    # Fix imports and remove cuckoo
+                    s['imports'] = utils.detect_imports(s)
+                    if "cuckoo" in s['imports']:
+                        s['imports'].remove('cuckoo')
+
+                    f.write(utils.rebuild_yara_rule(s))
 
             if mode == "w":
                 mode = "a"
+
+        files_sha256[file_name] = get_sha256_for_file(file_name)
 
     if not files_sha256:
         LOGGER.info('No YARA rule file(s) downloaded')
@@ -255,21 +300,15 @@ def yara_update() -> None:
 
     yara_importer = YaraImporter(al_client)
 
-    for x in os.listdir(al_combined_yara_rules_dir):
-        source_name = os.path.splitext(os.path.basename(x))[0]
+    for cur_file in files_sha256:
+        LOGGER.info(f"Validating output file: {cur_file}")
+        source_name = os.path.splitext(os.path.basename(cur_file))[0]
 
-        tmp_dir = tempfile.mkdtemp(dir='/tmp')
         try:
-            rules_file = os.path.join(tmp_dir, 'rules.yar')
-            with open(rules_file, 'w') as f:
-                f.write(open(os.path.join(al_combined_yara_rules_dir, x), 'r').read())
-
-            _compile_rules(rules_file)
-            yara_importer.import_file(rules_file, source_name)
+            _compile_rules(cur_file)
+            yara_importer.import_file(cur_file, source_name)
         except Exception as e:
             raise e
-        finally:
-            shutil.rmtree(tmp_dir)
 
     # TODO: Download all signatures matching query and unzip received file to UPDATE_OUTPUT_PATH
     previous_update = update_config.get('previous_update', '')
@@ -291,7 +330,7 @@ def yara_update() -> None:
         # Create the response yaml
         with open(os.path.join(UPDATE_OUTPUT_PATH, 'response.yaml'), 'w') as yml_fh:
             yaml.safe_dump(dict(
-                hash='new_hash',  # TODO if this hash doesn't change, the updater doesn't restart the service
+                hash=json.dumps(files_sha256),
             ), yml_fh)
 
 

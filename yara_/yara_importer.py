@@ -1,8 +1,9 @@
 import logging
 import os
 
+from plyara import Plyara, utils
+
 from assemblyline.common import forge
-from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.signature import Signature
 
 UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', None)
@@ -18,61 +19,29 @@ class YaraImporter(object):
             logger.setLevel(logging.INFO)
 
         self.update_client = al_client
-
+        self.parser = Plyara()
         self.classification = forge.get_classification()
         self.log = logger
-
-    @staticmethod
-    def get_signature_name(signature):
-        name = None
-        for line in signature.splitlines():
-            line = line.strip()
-            if line.startswith("rule ") or line.startswith("private rule ") \
-                    or line.startswith("global rule ") or line.startswith("global private rule "):
-                name = line.split(":")[0].split("{")[0]
-                name = name.replace("global ", "").replace("private ", "").replace("rule ", "")
-                break
-
-        if name is None:
-            return name
-        return name.strip()
-
-    @staticmethod
-    def parse_meta(signature):
-        meta = {}
-        meta_started = False
-        for line in signature.splitlines():
-            line = line.strip()
-            if not meta_started and line.startswith('meta') and line.endswith(':'):
-                meta_started = True
-                continue
-
-            if meta_started:
-                if line.startswith("//") or line == "":
-                    continue
-
-                if "=" not in line:
-                    break
-
-                key, val = line.split("=", 1)
-                key = key.strip()
-                val = val.strip().strip('"')
-                meta[key] = safe_str(val)
-
-        return meta
 
     def _save_signatures(self, signatures, source, default_status=DEFAULT_STATUS):
         saved_sigs = []
         order = 1
         for signature in signatures:
-            meta = self.parse_meta(signature)
+            classification = self.classification.UNRESTRICTED
+            signature_id = None
+            version = 1
+            status = default_status
 
-            name = self.get_signature_name(signature)
-            classification = meta.get('classification', self.classification.UNRESTRICTED)
-            signature_id = meta.get('id', meta.get('rule_id', meta.get('signature_id', None)))
-            version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
-
-            status = meta.get('status', meta.get('al_status', default_status))
+            for meta in signature.get('metadata', {}):
+                for k, v in meta.items():
+                    if k in ["classification"]:
+                        classification = v
+                    elif k in ['id', 'rule_id', 'signature_id']:
+                        signature_id = v
+                    elif k in ['version', 'rule_version', 'revision']:
+                        version = v
+                    elif k in ['status', 'al_status']:
+                        status = v
 
             # Convert CCCS YARA status to AL signature status
             if status == "RELEASED":
@@ -80,13 +49,22 @@ class YaraImporter(object):
             elif status == "DEPRECATED":
                 status = "DISABLED"
 
+            # Fallback status
+            if status not in ["DEPLOYED", "NOISY", "DISABLED", "STAGING", "TESTING", "INVALID"]:
+                status = default_status
+
+            # Fix imports and remove cuckoo
+            signature['imports'] = utils.detect_imports(signature)
+            if "cuckoo" in signature['imports']:
+                signature['imports'].remove('cuckoo')
+
             sig = Signature(dict(
                 classification=classification,
-                data=signature,
-                name=name,
+                data=utils.rebuild_yara_rule(signature),
+                name=signature.get('rule_name'),
                 order=order,
                 revision=int(float(version)),
-                signature_id=signature_id or name,
+                signature_id=signature_id or signature.get('rule_name'),
                 source=source,
                 status=status,
                 type="yara",
@@ -94,48 +72,25 @@ class YaraImporter(object):
             r = self.update_client.signature.add_update(sig.as_primitives())
 
             if r['success']:
-                self.log.info(f"Successfully added signature {name} (ID: {r['id']})")
+                self.log.info(f"Successfully added signature {signature.get('rule_name')} (ID: {r['id']})")
                 saved_sigs.append(sig)
                 order += 1
             else:
-                self.log.warning(f"Failed to add signature {name}")
+                self.log.warning(f"Failed to add signature {signature.get('rule_name')}")
 
         self.log.info(f"Imported {order - 1} signatures from {source} into Assemblyline")
 
         return saved_sigs
 
     def _split_signatures(self, data):
-        current_signature = []
-        signatures = []
-        in_rule = False
-        for line in data.splitlines():
-            temp_line = line.strip()
-
-            if in_rule:
-                current_signature.append(line)
-
-                if temp_line == "}":
-                    signatures.append("\n".join(current_signature))
-                    current_signature = []
-                    in_rule = False
-            else:
-                if temp_line.startswith("import ") \
-                        or temp_line.startswith("rule ") \
-                        or temp_line.startswith("private rule ") \
-                        or temp_line.startswith("global rule ") \
-                        or temp_line.startswith("global private rule "):
-                    if "rule" not in temp_line or " " not in self.get_signature_name(temp_line):
-                        in_rule = True
-                        current_signature.append(line)
-                    else:
-                        print(line)
-
-        return signatures
+        self.parser = Plyara()
+        return self.parser.parse_string(data)
 
     def import_data(self, yara_bin, source, default_status=DEFAULT_STATUS):
         return self._save_signatures(self._split_signatures(yara_bin), source, default_status=default_status)
 
     def import_file(self, file_path: str, source: str, default_status=DEFAULT_STATUS):
+        self.log.info(f"Importing file: {file_path}")
         cur_file = os.path.expanduser(file_path)
         if os.path.exists(cur_file):
             with open(cur_file, "r") as yara_file:

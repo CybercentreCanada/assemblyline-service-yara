@@ -60,7 +60,7 @@ heuristics:
 docker_config:
   image: cccs/assemblyline-service-yara:latest
   cpu_cores: 1.0
-  ram_mb: 256
+  ram_mb: 512
 
 update_config:
   generates_signatures: true

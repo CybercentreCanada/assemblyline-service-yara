@@ -54,11 +54,11 @@ def _compile_rules(rules_file):
 
 def guess_category(rule_file_name):
     cat_map = {
-        "technique": ["antidebug", "antivm", "capabilities", "crypto", "packer"],
-        "info": ["info", "deprecated"],
+        "technique": ["antidebug", "antivm", "capabilities"],
+        "info": ["info", "deprecated", "crypto", "packer"],
         "tool": ["webshell"],
         "exploit": ["cve", "exploit"],
-        "malware": ["malware"]
+        "malware": ["malware", "maldoc", "implant"]
     }
 
     for cat, items in cat_map.items():

@@ -12,6 +12,7 @@ from zipfile import ZipFile
 
 import requests
 import yaml
+from assemblyline.common.isotime import iso_to_epoch
 from assemblyline_client import get_client
 from git import Repo
 from plyara import Plyara, utils
@@ -69,7 +70,7 @@ def guess_category(rule_file_name):
     return None
 
 
-def url_download(source: Dict[str, Any], previous_update: Optional[float] = None) -> Optional[str]:
+def url_download(source: Dict[str, Any], previous_update=None) -> Optional[str]:
     """
 
     :param source:
@@ -100,6 +101,8 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
                 return
 
         if previous_update:
+            if isinstance(previous_update, str):
+                previous_update = iso_to_epoch(previous_update)
             previous_update = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime(previous_update))
             if headers:
                 headers['If-Modified-Since'] = previous_update
@@ -133,7 +136,7 @@ def url_download(source: Dict[str, Any], previous_update: Optional[float] = None
         session.close()
 
 
-def git_clone_repo(source: Dict[str, Any]) -> List[str] and List[str]:
+def git_clone_repo(source: Dict[str, Any], previous_update=None) -> List[str] and List[str]:
     name = source['name']
     url = source['uri']
     pattern = source.get('pattern', None)
@@ -152,12 +155,21 @@ def git_clone_repo(source: Dict[str, Any]) -> List[str] and List[str]:
         os.chmod(git_ssh_identity_file, 0o0400)
 
         git_ssh_cmd = f"ssh -oStrictHostKeyChecking=no -i {git_ssh_identity_file}"
-        Repo.clone_from(url, clone_dir, env={"GIT_SSH_COMMAND": git_ssh_cmd})
+        repo = Repo.clone_from(url, clone_dir, env={"GIT_SSH_COMMAND": git_ssh_cmd})
 
         # with Git().custom_environment(GIT_SSH_COMMAND=git_ssh_cmd):
         #     Repo.clone_from(url, clone_dir)
     else:
-        Repo.clone_from(url, clone_dir)
+        repo = Repo.clone_from(url, clone_dir)
+
+    # Check repo last commit
+    if previous_update:
+        if isinstance(previous_update, str):
+            previous_update = iso_to_epoch(previous_update)
+        for c in repo.iter_commits():
+            if c.committed_date < previous_update:
+                return []
+            break
 
     if pattern:
         files = [os.path.join(clone_dir, f) for f in os.listdir(clone_dir) if re.match(pattern, f)]
@@ -198,6 +210,7 @@ def yara_update() -> None:
     """
     Using an update configuration file as an input, which contains a list of sources, download all the file(s).
     """
+    # Load updater configuration
     update_config = {}
     if UPDATE_CONFIGURATION_PATH and os.path.exists(UPDATE_CONFIGURATION_PATH):
         with open(UPDATE_CONFIGURATION_PATH, 'r') as yml_fh:
@@ -210,9 +223,15 @@ def yara_update() -> None:
     if 'sources' not in update_config.keys() or not update_config['sources']:
         exit()
 
+    # Parse updater configuration
+    previous_update = update_config.get('previous_update', None)
+    previous_hash = update_config.get('previous_hash', None) or {}
+    if previous_hash:
+        previous_hash = json.loads(previous_hash)
     sources = {source['name']: source for source in update_config['sources']}
     files_sha256 = {}
 
+    # Create working directory
     updater_working_dir = os.path.join(tempfile.gettempdir(), 'yara_updater_working_dir')
     if os.path.exists(updater_working_dir):
         shutil.rmtree(updater_working_dir)
@@ -226,9 +245,8 @@ def yara_update() -> None:
         uri: str = source['uri']
 
         if uri.endswith('.git'):
-            files = git_clone_repo(source)
+            files = git_clone_repo(source, previous_update=previous_update)
         else:
-            previous_update = update_config.get('previous_update', None)
             files = [url_download(source, previous_update=previous_update)]
 
         processed_files = set()
@@ -285,23 +303,31 @@ def yara_update() -> None:
             if mode == "w":
                 mode = "a"
 
-        files_sha256[file_name] = get_sha256_for_file(file_name)
+        # Check if the file is the same as the last run
+        if os.path.exists(file_name):
+            cache_name = os.path.basename(file_name)
+            sha256 = get_sha256_for_file(file_name)
+            if sha256 != previous_hash.get(cache_name, None):
+                files_sha256[cache_name] = sha256
+            else:
+                LOGGER.info(f'File {cache_name} has not changed since last run. Skipping it...')
 
     if not files_sha256:
-        LOGGER.info('No YARA rule file(s) downloaded')
+        LOGGER.info('No new YARA rules files to process')
         exit()
 
-    LOGGER.info("YARA rule(s) file(s) successfully downloaded")
+    LOGGER.info("YARA rules file(s) successfully downloaded")
 
     server = update_config['ui_server']
     user = update_config['api_user']
     api_key = update_config['api_key']
     al_client = get_client(server, apikey=(user, api_key), verify=False)
-
     yara_importer = YaraImporter(al_client)
 
-    for cur_file in files_sha256:
-        LOGGER.info(f"Validating output file: {cur_file}")
+    # Validating and importing the different signatures
+    for base_file in files_sha256:
+        LOGGER.info(f"Validating output file: {base_file}")
+        cur_file = os.path.join(updater_working_dir, base_file)
         source_name = os.path.splitext(os.path.basename(cur_file))[0]
 
         try:
@@ -310,7 +336,7 @@ def yara_update() -> None:
         except Exception as e:
             raise e
 
-    # TODO: Download all signatures matching query and unzip received file to UPDATE_OUTPUT_PATH
+    # Check if new signatures have been added
     previous_update = update_config.get('previous_update', '')
     if al_client.signature.update_available(since=previous_update, sig_type='yara')['update_available']:
         LOGGER.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
@@ -319,7 +345,7 @@ def yara_update() -> None:
             os.makedirs(UPDATE_OUTPUT_PATH)
 
         temp_zip_file = os.path.join(UPDATE_OUTPUT_PATH, 'temp.zip')
-        al_client.signature.download(output=temp_zip_file, query="type:yara AND (status:TESTING OR status:DEPLOYED)")
+        al_client.signature.download(output=temp_zip_file, query="type:yara AND (status:NOISY OR status:DEPLOYED)")
 
         if os.path.exists(temp_zip_file):
             with ZipFile(temp_zip_file, 'r') as zip_f:
@@ -329,9 +355,7 @@ def yara_update() -> None:
 
         # Create the response yaml
         with open(os.path.join(UPDATE_OUTPUT_PATH, 'response.yaml'), 'w') as yml_fh:
-            yaml.safe_dump(dict(
-                hash=json.dumps(files_sha256),
-            ), yml_fh)
+            yaml.safe_dump(dict(hash=json.dumps(files_sha256)), yml_fh)
 
 
 if __name__ == '__main__':

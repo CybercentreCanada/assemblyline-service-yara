@@ -14,12 +14,14 @@ with open(SERVICE_MANIFEST, 'r') as svc:
     service = yaml.safe_load(svc)
 
 with open(UPDATE_CONFIG, 'w') as fh:
-    yaml.safe_dump({
+    print()
+    yml = yaml.safe_dump({
         'previous_update': PREVIOUS_UPDATE,
         'previous_hash': PREVIOUS_HASH,
         'sources': [x for x in service.get("update_config", {}).get("sources", [])],
         'api_user': USER,
         'api_key': API_KEY,
         'ui_server': SERVER
-    }, fh)
-
+    })
+    fh.write(yml)
+    print(yml)

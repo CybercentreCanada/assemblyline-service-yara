@@ -7,7 +7,6 @@ import shutil
 import tempfile
 import time
 from typing import List, Dict, Any, Optional, Set
-from urllib.parse import urlparse
 from zipfile import ZipFile
 
 import requests
@@ -77,6 +76,7 @@ def url_download(source: Dict[str, Any], previous_update=None) -> Optional[str]:
     :param previous_update:
     :return:
     """
+    name = source['name']
     uri = source['uri']
     username = source.get('username', None)
     password = source.get('password', None)
@@ -88,6 +88,9 @@ def url_download(source: Dict[str, Any], previous_update=None) -> Optional[str]:
     session = requests.Session()
 
     try:
+        if isinstance(previous_update, str):
+            previous_update = iso_to_epoch(previous_update)
+
         # Check the response header for the last modified date
         response = session.head(uri, auth=auth, headers=headers)
         last_modified = response.headers.get('Last-Modified', None)
@@ -96,13 +99,11 @@ def url_download(source: Dict[str, Any], previous_update=None) -> Optional[str]:
             last_modified = time.mktime(time.strptime(last_modified, "%a, %d %b %Y %H:%M:%S %Z"))
 
             # Compare the last modified time with the last updated time
-            if previous_update and last_modified > previous_update:
+            if previous_update and last_modified <= previous_update:
                 # File has not been modified since last update, do nothing
                 return
 
         if previous_update:
-            if isinstance(previous_update, str):
-                previous_update = iso_to_epoch(previous_update)
             previous_update = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime(previous_update))
             if headers:
                 headers['If-Modified-Since'] = previous_update
@@ -116,7 +117,7 @@ def url_download(source: Dict[str, Any], previous_update=None) -> Optional[str]:
             # File has not been modified since last update, do nothing
             return
         elif response.ok:
-            file_name = os.path.basename(urlparse(uri).path)  # TODO: make filename as source name with extension .yar
+            file_name = os.path.basename(f"{name}.yar")  # TODO: make filename as source name with extension .yar
             file_path = os.path.join(UPDATE_DIR, file_name)
             with open(file_path, 'wb') as f:
                 f.write(response.content)
@@ -156,9 +157,6 @@ def git_clone_repo(source: Dict[str, Any], previous_update=None) -> List[str] an
 
         git_ssh_cmd = f"ssh -oStrictHostKeyChecking=no -i {git_ssh_identity_file}"
         repo = Repo.clone_from(url, clone_dir, env={"GIT_SSH_COMMAND": git_ssh_cmd})
-
-        # with Git().custom_environment(GIT_SSH_COMMAND=git_ssh_cmd):
-        #     Repo.clone_from(url, clone_dir)
     else:
         repo = Repo.clone_from(url, clone_dir)
 
@@ -314,6 +312,7 @@ def yara_update() -> None:
 
     if not files_sha256:
         LOGGER.info('No new YARA rules files to process')
+        shutil.rmtree(UPDATE_OUTPUT_PATH, ignore_errors=True)
         exit()
 
     LOGGER.info("YARA rules file(s) successfully downloaded")
@@ -337,8 +336,7 @@ def yara_update() -> None:
             raise e
 
     # Check if new signatures have been added
-    previous_update = update_config.get('previous_update', '')
-    if al_client.signature.update_available(since=previous_update, sig_type='yara')['update_available']:
+    if al_client.signature.update_available(since=previous_update or '', sig_type='yara')['update_available']:
         LOGGER.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
 
         if not os.path.exists(UPDATE_OUTPUT_PATH):

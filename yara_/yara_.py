@@ -377,6 +377,8 @@ class Yara(ServiceBase):
             self.log.warning("No valid YARA rules files found")
             return None
 
+        self.log.info(f"Yara will load the following rules: {self.rules_list}")
+
         if len(all_sha256s) == 1:
             return all_sha256s[0][:7]
 

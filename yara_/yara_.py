@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import threading
+from pathlib import Path
 from typing import List
 
 import yara
@@ -114,11 +115,13 @@ class Yara(ServiceBase):
 
     def __init__(self, config=None):
         super(Yara, self).__init__(config)
-        self.rules = None
-        self.rules_hash = self._get_rules_hash()
         self.initialization_lock = threading.RLock()
+        self.rules = None
+        self.rules_list = []
         self.task = None
 
+        # Load rules and externals
+        self.rules_hash = self._get_rules_hash()
         self.yara_externals = {f'al_{x}': x for x in ['submitter', 'mime', 'file_type']}
 
     def _add_resultinfo_for_match(self, result: Result, match):
@@ -357,15 +360,18 @@ class Yara(ServiceBase):
             self.log.warning("Yara rules directory not found")
             return None
 
-        yara_rules_dirs = [x for x in sorted(os.listdir(FILE_UPDATE_DIRECTORY), reverse=True) if
-                           not x.startswith('.tmp')]
+        try:
+            rules_directory = max([os.path.join(FILE_UPDATE_DIRECTORY, d)
+                                   for d in os.listdir(FILE_UPDATE_DIRECTORY)
+                                   if os.path.isdir(os.path.join(FILE_UPDATE_DIRECTORY, d))
+                                   and not d.startswith('.tmp')],
+                                  key=os.path.getctime)
+        except ValueError:
+            self.log.warning("No valid yara rules directory found")
+            return None
 
-        all_sha256s = []
-        for yara_rules_dir in yara_rules_dirs:
-            for path_in_dir, _, files in os.walk(os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir)):
-                for filename in files:
-                    filepath = os.path.join(FILE_UPDATE_DIRECTORY, path_in_dir, filename)
-                    all_sha256s.append(get_sha256_for_file(filepath))
+        self.rules_list = [str(f) for f in Path(rules_directory).rglob("*") if os.path.isfile(str(f))]
+        all_sha256s = [get_sha256_for_file(f) for f in self.rules_list]
 
         if not all_sha256s:
             self.log.warning("No valid YARA rules files found")
@@ -381,21 +387,10 @@ class Yara(ServiceBase):
         Load Yara rules files. This function will check the updates directory and try to load the latest set of
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
-        if not os.path.exists(FILE_UPDATE_DIRECTORY):
-            raise Exception("Yara rules directory not found")
+        if not self.rules_list:
+            raise Exception("No valid YARA rules files found")
 
-        yara_rules_dirs = [x for x in sorted(os.listdir(FILE_UPDATE_DIRECTORY), reverse=True)
-                           if not x.startswith('.tmp')]
-
-        yar_files = {}
-        for yara_rules_dir in yara_rules_dirs:
-            # Load all files in the dir, each file will have its own Yara namespace
-            # Each file is expected to be from a different repo source
-            # Using namespaces, allows us to handle Yara rule name conflicts
-            for path_in_dir, _, files in os.walk(os.path.join(FILE_UPDATE_DIRECTORY, yara_rules_dir)):
-                for filename in files:
-                    filepath = os.path.join(FILE_UPDATE_DIRECTORY, path_in_dir, filename)
-                    yar_files[os.path.splitext(os.path.basename(filename))[0]] = filepath
+        yar_files = {os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list}
 
         if not yar_files:
             raise Exception("No valid YARA rules files found")
@@ -420,28 +415,23 @@ class Yara(ServiceBase):
         yara_externals = {}
         for k, i in self.yara_externals.items():
             # Check default request.task fields
-            try:
-                sval = self.task.get(i)
-            except Exception:
-                sval = None
+            sval = self.task.__dict__.get(i, None)
+
             # if not sval:
             #     # Check metadata dictionary
-            #     smeta = self.task.metadata
-            #     if isinstance(smeta, dict):
-            #         sval = smeta.get(i, None)
+            #     sval = self.task.metadata.get(i, None)
+
             if not sval:
                 # Check params dictionary
-                smeta = self.task.service_config
-                if isinstance(smeta, dict):
-                    sval = smeta.get(i, None)
+                sval = self.task.service_config.get(i, None)
+
             if not sval:
                 # Check temp submission data
-                smeta = self.task.temp_submission_data
-                if isinstance(smeta, dict):
-                    sval = smeta.get(i, None)
+                sval = self.task.temp_submission_data.get(i, None)
+
             # Create dummy value if item not found
             if not sval:
-                sval = i
+                sval = "__DOES_NOT_MATCH__"
 
             # Normalize unicode with safe_str and make sure everything else is a string
             yara_externals[k] = str(safe_str(sval))

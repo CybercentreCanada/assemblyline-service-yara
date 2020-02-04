@@ -373,11 +373,7 @@ class Yara(ServiceBase):
         self.rules_list = [str(f) for f in Path(rules_directory).rglob("*") if os.path.isfile(str(f))]
         all_sha256s = [get_sha256_for_file(f) for f in self.rules_list]
 
-        if not all_sha256s:
-            self.log.warning("No valid YARA rules files found")
-            return None
-
-        self.log.info(f"Yara will load the following rules: {self.rules_list}")
+        self.log.info(f"Yara will load the following rule files: {self.rules_list}")
 
         if len(all_sha256s) == 1:
             return all_sha256s[0][:7]
@@ -410,6 +406,8 @@ class Yara(ServiceBase):
         """Main Module. See README for details."""
         if not self.rules:
             return
+
+        request.set_service_context(f"Yara version: {self.get_tool_version()}")
 
         self.task = request.task
         local_filename = request.file_path
@@ -462,6 +460,13 @@ class Yara(ServiceBase):
                         section.add_line("File returned too many matches with current rule set and YARA exited.")
                         result.add_section(section)
                         request.result = result
+
+    def get_tool_version(self):
+        """
+        Return the version of yara used for processing
+        :return:
+        """
+        return yara.YARA_VERSION
 
     def get_service_version(self):
         basic_version = super(Yara, self).get_service_version()

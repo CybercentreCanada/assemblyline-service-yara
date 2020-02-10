@@ -23,4 +23,6 @@ USER assemblyline
 
 # Copy Yara service code
 WORKDIR /opt/al_service
-COPY . .
+COPY . ./yara_/.
+
+RUN cp yara_/service_manifest.yml .

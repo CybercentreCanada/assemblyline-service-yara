@@ -19,13 +19,6 @@ enabled: true
 is_external: false
 licence_count: 0
 
-config:
-  rule_path: rules.yar
-  signature_query: meta.al_status:DEPLOYED OR meta.al_status:NOISY
-  verify: false
-
-submission_params: []
-
 heuristics:
   - heur_id: 1
     name: Info
@@ -47,7 +40,7 @@ heuristics:
 
   - heur_id: 4
     name: Tool
-    score: 1000
+    score: 500
     filetype: '*'
     description: Yara rule - Tool group
 

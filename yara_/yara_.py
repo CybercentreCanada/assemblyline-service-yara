@@ -29,7 +29,6 @@ class YaraMetadata(object):
         self.classification = meta.get('classification', Classification.UNRESTRICTED)
         self.source = meta.get('source', meta.get('organisation', None))
         self.summary = meta.get('summary', None)
-        self.score_override = meta.get('al_score', None)
         self.author = meta.get('author', meta.get('poc', None))
         self.status = meta.get('status', None)  # Status assigned by the rule creator
         self.al_status = meta.get(self.status, meta.get('al_status', 'TESTING'))
@@ -113,8 +112,17 @@ class Yara(ServiceBase):
         malware=5,
     )
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, name=None, externals=None):
         super(Yara, self).__init__(config)
+
+        if externals is None:
+            externals = ['submitter', 'mime', 'file_type']
+
+        if name is None:
+            self.name = "Yara"
+        else:
+            self.name = name
+
         self.initialization_lock = threading.RLock()
         self.rules = None
         self.rules_list = []
@@ -122,7 +130,7 @@ class Yara(ServiceBase):
 
         # Load rules and externals
         self.rules_hash = self._get_rules_hash()
-        self.yara_externals = {f'al_{x}': x for x in ['submitter', 'mime', 'file_type']}
+        self.yara_externals = {f'al_{x}': x for x in externals}
 
     def _add_resultinfo_for_match(self, result: Result, match):
         """
@@ -139,13 +147,11 @@ class Yara(ServiceBase):
         almeta = YaraMetadata(match)
         self._normalize_metadata(almeta)
 
-        if not self.task.deep_scan and almeta.al_status == "NOISY":
-            almeta.score_override = 0
-
         section = ResultSection('', classification=almeta.classification)
-        section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1),
-                              signature=f'{match.namespace}.{match.rule}', attack_id=almeta.mitre_att)
-        section.add_tag('file.rule.yara', f'{match.namespace}.{match.rule}')
+        if not self.task.deep_scan and almeta.al_status == "NOISY":
+            section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1),
+                                  signature=f'{match.namespace}.{match.rule}', attack_id=almeta.mitre_att)
+        section.add_tag(f'file.rule.{self.name.lower()}', f'{match.namespace}.{match.rule}')
 
         title_elements = [f"[{match.namespace}] {match.rule}", ]
 
@@ -357,7 +363,7 @@ class Yara(ServiceBase):
 
     def _get_rules_hash(self):
         if not os.path.exists(FILE_UPDATE_DIRECTORY):
-            self.log.warning("Yara rules directory not found")
+            self.log.warning(f"{self.name} rules directory not found")
             return None
 
         try:
@@ -367,13 +373,13 @@ class Yara(ServiceBase):
                                    and not d.startswith('.tmp')],
                                   key=os.path.getctime)
         except ValueError:
-            self.log.warning("No valid yara rules directory found")
+            self.log.warning(f"No valid {self.name} rules directory found")
             return None
 
         self.rules_list = [str(f) for f in Path(rules_directory).rglob("*") if os.path.isfile(str(f))]
         all_sha256s = [get_sha256_for_file(f) for f in self.rules_list]
 
-        self.log.info(f"Yara will load the following rule files: {self.rules_list}")
+        self.log.info(f"{self.name} will load the following rule files: {self.rules_list}")
 
         if len(all_sha256s) == 1:
             return all_sha256s[0][:7]
@@ -386,12 +392,12 @@ class Yara(ServiceBase):
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
         if not self.rules_list:
-            raise Exception("No valid YARA rules files found")
+            raise Exception(f"No valid {self.name} rules files found")
 
         yar_files = {os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list}
 
         if not yar_files:
-            raise Exception("No valid YARA rules files found")
+            raise Exception(f"No valid {self.name} rules files found")
 
         rules = yara.compile(filepaths=yar_files, externals=self.yara_externals)
 
@@ -399,7 +405,7 @@ class Yara(ServiceBase):
             with self.initialization_lock:
                 self.rules = rules
                 return
-        raise Exception("No valid YARA rules files found")
+        raise Exception(f"No valid {self.name} rules files found")
 
     # noinspection PyBroadException
     def execute(self, request):
@@ -407,7 +413,7 @@ class Yara(ServiceBase):
         if not self.rules:
             return
 
-        request.set_service_context(f"Yara version: {self.get_tool_version()}")
+        request.set_service_context(f"{self.name} version: {self.get_tool_version()}")
 
         self.task = request.task
         local_filename = request.file_path
@@ -449,16 +455,15 @@ class Yara(ServiceBase):
                         # Fast mode == Yara skips strings already found
                         matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
                         result = self._extract_result_from_matches(matches)
-                        section = ResultSection("Service Warnings")
+                        section = ResultSection("Service Warnings", parent=result)
                         section.add_line("Too many matches detected with current ruleset. "
-                                         "YARA forced to scan in fast mode.")
+                                         f"{self.name} forced to scan in fast mode.")
                         request.result = result
                     except Exception:
                         self.log.warning(f"YARA internal error 30 detected on submission {self.task.sid}")
                         result = Result()
-                        section = ResultSection("YARA scan not completed.")
+                        section = ResultSection(f"{self.name} scan not completed.", parent=result)
                         section.add_line("File returned too many matches with current rule set and YARA exited.")
-                        result.add_section(section)
                         request.result = result
 
     def get_tool_version(self):
@@ -484,6 +489,6 @@ class Yara(ServiceBase):
             self._load_rules()
 
         except Exception as e:
-            raise Exception(f"Something went wrong while trying to load YARA rules: {str(e)}")
+            raise Exception(f"Something went wrong while trying to load {self.name} rules: {str(e)}")
 
-        self.log.info(f"YARA started with service version: {self.get_service_version()}")
+        self.log.info(f"{self.name} started with service version: {self.get_service_version()}")

@@ -5,7 +5,7 @@ import yaml
 service = sys.argv[1]
 
 SERVICE_MANIFEST = f"../{service}/service_manifest.yml"
-UPDATE_CONFIG = "/tmp/yara_updater_config.yaml"
+UPDATE_CONFIG = f"/tmp/{service.replace('_', '')}_updater_config.yaml"
 
 USER = os.environ.get("USER", None)
 API_KEY = os.environ.get("API_KEY", None)

@@ -60,7 +60,6 @@ update_config:
     command: ["python", "-m", "yara_.yara_updater"]
     image: cccs/assemblyline-service-tagcheck:latest
   sources:
-    - name: yr_git
-      pattern: .*_index.yar$
-      uri: https://github.com/Yara-Rules/rules.git
+    - name: cccs
+      uri: https://assemblyline-support.s3.amazonaws.com/tagcheck.rules
   update_interval_seconds: 86400  # 24 hours

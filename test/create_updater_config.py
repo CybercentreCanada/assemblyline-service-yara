@@ -1,7 +1,10 @@
 import os
+import sys
 import yaml
 
-SERVICE_MANIFEST = "../service_manifest.yml"
+service = sys.argv[1]
+
+SERVICE_MANIFEST = f"../{service}/service_manifest.yml"
 UPDATE_CONFIG = "/tmp/yara_updater_config.yaml"
 
 USER = os.environ.get("USER", None)

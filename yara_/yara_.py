@@ -31,7 +31,7 @@ class YaraMetadata(object):
         self.summary = meta.get('summary', None)
         self.author = meta.get('author', meta.get('poc', None))
         self.status = meta.get('status', None)  # Status assigned by the rule creator
-        self.al_status = meta.get(self.status, meta.get('al_status', 'TESTING'))
+        self.al_status = meta.get(self.status, meta.get('al_status', 'DEPLOYED'))
         self.actor_type = meta.get('actor_type', meta.get('ta_type', None))
         self.mitre_att = meta.get('mitre_att', None)
         self.mitre_group = meta.get('mitre_group', None)
@@ -113,7 +113,7 @@ class Yara(ServiceBase):
     )
 
     def __init__(self, config=None, name=None, externals=None):
-        super(Yara, self).__init__(config)
+        super().__init__(config)
 
         if externals is None:
             externals = ['submitter', 'mime', 'file_type']
@@ -126,11 +126,11 @@ class Yara(ServiceBase):
         self.initialization_lock = threading.RLock()
         self.rules = None
         self.rules_list = []
-        self.task = None
+        self.deep_scan = None
 
         # Load rules and externals
         self.rules_hash = self._get_rules_hash()
-        self.yara_externals = {f'al_{x}': x for x in externals}
+        self.yara_externals = {f'al_{x.replace(".", "_")}': "" for x in externals}
 
     def _add_resultinfo_for_match(self, result: Result, match):
         """
@@ -148,7 +148,7 @@ class Yara(ServiceBase):
         self._normalize_metadata(almeta)
 
         section = ResultSection('', classification=almeta.classification)
-        if not self.task.deep_scan and almeta.al_status == "NOISY":
+        if self.deep_scan or almeta.al_status != "NOISY":
             section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1),
                                   signature=f'{match.namespace}.{match.rule}', attack_id=almeta.mitre_att)
         section.add_tag(f'file.rule.{self.name.lower()}', f'{match.namespace}.{match.rule}')
@@ -415,32 +415,36 @@ class Yara(ServiceBase):
 
         request.set_service_context(f"{self.name} version: {self.get_tool_version()}")
 
-        self.task = request.task
+        self.deep_scan = request.task.deep_scan
         local_filename = request.file_path
+        tags = {f"al_{k.replace('.', '_')}": i for k, i in request.task.tags.items()}
 
         yara_externals = {}
-        for k, i in self.yara_externals.items():
+        for k in self.yara_externals.keys():
             # Check default request.task fields
-            sval = self.task.__dict__.get(i, None)
+            sval = request.task.__dict__.get(k, None)
 
             # if not sval:
             #     # Check metadata dictionary
-            #     sval = self.task.metadata.get(i, None)
+            #     sval = request.task.metadata.get(k, None)
 
             if not sval:
                 # Check params dictionary
-                sval = self.task.service_config.get(i, None)
+                sval = request.task.service_config.get(k, None)
+
+            if not sval:
+                # Check tags list
+                val_list = tags.get(k, None)
+                if val_list:
+                    sval = " | ".join(val_list)
 
             if not sval:
                 # Check temp submission data
-                sval = self.task.temp_submission_data.get(i, None)
-
-            # Create dummy value if item not found
-            if not sval:
-                sval = "__DOES_NOT_MATCH__"
+                sval = request.task.temp_submission_data.get(k, None)
 
             # Normalize unicode with safe_str and make sure everything else is a string
-            yara_externals[k] = str(safe_str(sval))
+            if sval:
+                yara_externals[k] = safe_str(sval)
 
         with self.initialization_lock:
             try:
@@ -460,7 +464,7 @@ class Yara(ServiceBase):
                                          f"{self.name} forced to scan in fast mode.")
                         request.result = result
                     except Exception:
-                        self.log.warning(f"YARA internal error 30 detected on submission {self.task.sid}")
+                        self.log.warning(f"YARA internal error 30 detected on submission {request.task.sid}")
                         result = Result()
                         section = ResultSection(f"{self.name} scan not completed.", parent=result)
                         section.add_line("File returned too many matches with current rule set and YARA exited.")
@@ -474,7 +478,7 @@ class Yara(ServiceBase):
         return yara.YARA_VERSION
 
     def get_service_version(self):
-        basic_version = super(Yara, self).get_service_version()
+        basic_version = super().get_service_version()
         if self.rules_hash and self.rules_hash not in basic_version:
             return f'{basic_version}.r{self.rules_hash}'
         else:

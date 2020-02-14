@@ -13,7 +13,8 @@ rule cyberark_Stealing_Service_Credentials_registry_keys {
 		origin = "https://www.cyberark.com/blog/cyberark-labs-research-stealing-service-credentials-achieve-full-domain-compromise/"
 
 	condition:
-		al_dynamic_registry_key matches /.*Security\\Policy\\Secrets\\SC.*/i and al_dynamic_registry_key matches /.*CurrentControlSet\\Services.*/i
+		al_dynamic_registry_key matches /.*Security\\Policy\\Secrets\\SC.*/i and
+		al_dynamic_registry_key matches /.*CurrentControlSet\\Services.*/i
 }
 
 rule persistence_msconfig_registry_key {
@@ -217,7 +218,8 @@ rule Neo23x0_common_malware_dropped_filenames_Appdata {
 		origin = "https://github.com/Neo23x0/signature-base/blob/50f14d7d1def5ee1032158af658a5c0b82fe50c9/iocs/filename-iocs.txt"
 
 	condition:
-		al_file_path matches /.*AppData[\\%]+[\w]+\.exe/i or al_dynamic_process_file_name matches /.*AppData[\\%]+[\w]+\.exe/i
+		al_file_path matches /.*AppData[\\%]+[\w]+\.exe/i or
+		al_dynamic_process_file_name matches /.*AppData[\\%]+[\w]+\.exe/i
 }
 
 rule Neo23x0_common_malware_dropped_filenames_Temp {
@@ -234,7 +236,8 @@ rule Neo23x0_common_malware_dropped_filenames_Temp {
 		origin = "https://github.com/Neo23x0/signature-base/blob/50f14d7d1def5ee1032158af658a5c0b82fe50c9/iocs/filename-iocs.txt"
 
 	condition:
-		al_file_path matches /.*[Tt]emp\\[\w]{1,2}\.(exe|com|scr)/ or al_dynamic_process_file_name matches /.*[Tt]emp\\[\w]{1,2}\.(exe|com|scr)/
+		al_file_path matches /.*[Tt]emp\\[\w]{1,2}\.(exe|com|scr)/ or
+		al_dynamic_process_file_name matches /.*[Tt]emp\\[\w]{1,2}\.(exe|com|scr)/
 }
 
 rule Neo23x0_common_malware_dropped_filenames_C {
@@ -251,7 +254,8 @@ rule Neo23x0_common_malware_dropped_filenames_C {
 		origin = "https://github.com/Neo23x0/signature-base/blob/50f14d7d1def5ee1032158af658a5c0b82fe50c9/iocs/filename-iocs.txt"
 
 	condition:
-		al_file_path matches /[Cc]:\\[\w]{1,2}\.(exe|com|scr)/ or al_dynamic_process_file_name matches /[Cc]:\\[\w]{1,2}\.(exe|com|scr)/
+		al_file_path matches /[Cc]:\\[\w]{1,2}\.(exe|com|scr)/ or
+		al_dynamic_process_file_name matches /[Cc]:\\[\w]{1,2}\.(exe|com|scr)/
 }
 
 rule Neo23x0_EXE_NonEXE_Dir1 {
@@ -268,7 +272,8 @@ rule Neo23x0_EXE_NonEXE_Dir1 {
 		origin = "https://github.com/Neo23x0/signature-base/blob/50f14d7d1def5ee1032158af658a5c0b82fe50c9/iocs/filename-iocs.txt"
 
 	condition:
-		al_file_path matches /.*\\(images|img|js|fonts|css|swf|templates|themes|log|error_docs)\\[^\\]{,20}\.(exe|dll)/i or al_dynamic_process_file_name matches /.*\\(images|img|js|fonts|css|swf|templates|themes|log|error_docs)\\[^\\]{,20}\.(exe|dll)/i
+		al_file_path matches /.*\\(images|img|js|fonts|css|swf|templates|themes|log|error_docs)\\[^\\]{,20}\.(exe|dll)/i or
+		al_dynamic_process_file_name matches /.*\\(images|img|js|fonts|css|swf|templates|themes|log|error_docs)\\[^\\]{,20}\.(exe|dll)/i
 }
 
 rule Neo23x0_EXE_NonEXE_Dir2 {
@@ -285,7 +290,8 @@ rule Neo23x0_EXE_NonEXE_Dir2 {
 		origin = "https://github.com/Neo23x0/signature-base/blob/50f14d7d1def5ee1032158af658a5c0b82fe50c9/iocs/filename-iocs.txt"
 
 	condition:
-		al_file_path matches /.*\\(wp-admin|wp-content|wp-includes)\\[^\\]{,20}\.(exe|dll)/i or al_dynamic_process_file_name matches /.*\\(wp-admin|wp-content|wp-includes)\\[^\\]{,20}\.(exe|dll)/i
+		al_file_path matches /.*\\(wp-admin|wp-content|wp-includes)\\[^\\]{,20}\.(exe|dll)/i or
+		al_dynamic_process_file_name matches /.*\\(wp-admin|wp-content|wp-includes)\\[^\\]{,20}\.(exe|dll)/i
 }
 
 rule UPX_Packer_PE_Section {

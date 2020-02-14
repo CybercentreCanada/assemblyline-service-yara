@@ -57,7 +57,7 @@ update_config:
   method: run
   run_options:
     allow_internet_access: true
-    command: ["python", "-m", "yara_.yara_updater"]
+    command: ["python", "-m", "tagcheck.tagcheck_updater"]
     image: cccs/assemblyline-service-tagcheck:latest
   sources:
     - name: cccs

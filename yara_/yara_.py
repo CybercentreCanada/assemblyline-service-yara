@@ -21,22 +21,27 @@ class YaraMetadata(object):
     def __init__(self, match):
         meta = match.meta
         self.name = match.rule
-        self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', f'{match.namespace}.{match.rule}')))
+        self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', None)))
         self.category = meta.get('category', meta.get('rule_group', 'info')).lower()
         self.malware_type = meta.get('malware_type', None)
         self.version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
         self.description = meta.get('description', None)
         self.classification = meta.get('classification', Classification.UNRESTRICTED)
         self.source = meta.get('source', meta.get('organisation', None))
-        self.summary = meta.get('summary', None)
+        self.summary = meta.get('summary', meta.get('behavior', None))
         self.author = meta.get('author', meta.get('poc', None))
         self.status = meta.get('status', None)  # Status assigned by the rule creator
         self.al_status = meta.get(self.status, meta.get('al_status', 'DEPLOYED'))
-        self.actor_type = meta.get('actor_type', meta.get('ta_type', None))
-        self.mitre_att = meta.get('mitre_att', None)
+        self.actor_type = meta.get('actor_type', meta.get('ta_type', meta.get('family', None)))
+        self.mitre_att = meta.get('mitre_att', meta.get("attack_id", None))
         self.mitre_group = meta.get('mitre_group', None)
+        self.actor = meta.get('used_by', meta.get('actor', meta.get('threat_actor', None)))
+        self.exploit = meta.get('exploit', None)
+        self.al_tag = meta.get('al_tag', None)
 
         def _safe_split(comma_sep_list):
+            if comma_sep_list is None:
+                return []
             return [e for e in comma_sep_list.split(',') if e]
 
         # Specifics about the category
@@ -46,9 +51,23 @@ class YaraMetadata(object):
         self.tool = meta.get('tool', None)
         self.malware = meta.get('malware', meta.get('implant', None))
 
-        self.actors = _safe_split(meta.get('used_by', ''))
-        self.summary = _safe_split(meta.get('summary', ''))
-        self.exploits = _safe_split(meta.get('exploit', ''))
+        self.actors = _safe_split(self.actor)
+        self.behavior = set(_safe_split(meta.get('summary', None)))
+        self.exploits = _safe_split(self.exploit)
+
+        # Parse and populate tag list
+        self.tags = []
+        if self.al_tag:
+            if ',' in self.malware:
+                for al_tag in self.al_tag.split(','):
+                    tokens = al_tag.split(':')
+                    if len(tokens) == 2:
+                        self.tags.append({"type": tokens[0], 'value': tokens[1]})
+
+            else:
+                tokens = self.al_tag.split(':')
+                if len(tokens) == 2:
+                    self.tags.append({"type": tokens[0], 'value': tokens[1]})
 
         # Parse and populate malware list
         self.malwares = []
@@ -60,7 +79,10 @@ class YaraMetadata(object):
                     malware_family = tokens[1] if (len(tokens) == 2) else ''
                     self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
             else:
-                self.malwares.append((self.malware, self.malware_type or ''))
+                tokens = self.malware.split(':')
+                malware_name = tokens[0]
+                malware_family = tokens[1] if (len(tokens) == 2) else self.malware_type or ''
+                self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
 
         # Parse and populate technique info
         self.techniques = []
@@ -76,7 +98,14 @@ class YaraMetadata(object):
                         name = tokens[0]
                     self.techniques.append((category.strip(), name.strip()))
             else:
-                self.techniques.append((self.technique, self.technique))
+                tokens = self.technique.split(':')
+                category = ''
+                if len(tokens) == 2:
+                    category = tokens[0]
+                    name = tokens[1]
+                else:
+                    name = tokens[0]
+                self.techniques.append((category.strip(), name.strip()))
 
         # Parse and populate info
         self.infos = []
@@ -90,7 +119,12 @@ class YaraMetadata(object):
                     else:
                         self.infos.append((None, tokens[0]))
             else:
-                self.infos.append((self.info, self.info))
+                tokens = self.info.split(':', 1)
+                if len(tokens) == 2:
+                    # category, value
+                    self.infos.append((tokens[0], tokens[1]))
+                else:
+                    self.infos.append((None, tokens[0]))
 
 
 class Yara(ServiceBase):
@@ -104,12 +138,30 @@ class Yara(ServiceBase):
         persistance=('technique.persistence', 'Has persistence'),
     )
 
+    INFO_DESCRIPTORS = dict(
+        compiler=("file.compiler", "Compiled with known compiler"),
+        libs=("file.lib", "Using known library"),
+        lib=("file.lib", "Using known library")
+
+    )
+
     YARA_HEURISTICS_MAP = dict(
         info=1,
         technique=2,
         exploit=3,
         tool=4,
         malware=5,
+        safe=6,
+        tl1=7,
+        tl2=8,
+        tl3=9,
+        tl4=10,
+        tl5=11,
+        tl6=12,
+        tl7=13,
+        tl8=14,
+        tl9=15,
+        tl10=16,
     )
 
     def __init__(self, config=None, name=None, externals=None):
@@ -158,6 +210,9 @@ class Yara(ServiceBase):
         if almeta.actor_type:
             section.add_tag('attribution.actor', almeta.actor_type)
 
+        for tag in almeta.tags:
+            section.add_tag(tag['type'], tag['value'])
+
         # Malware Tags
         implant_title_elements = []
         for (implant_name, implant_family) in almeta.malwares:
@@ -168,7 +223,7 @@ class Yara(ServiceBase):
                 implant_title_elements.append(implant_family)
                 section.add_tag('attribution.family', implant_family)
         if implant_title_elements:
-            title_elements.append(f"implant: {','.join(implant_title_elements)}")
+            title_elements.append(f"- Implant(s): {', '.join(implant_title_elements)}")
 
         # Threat Actor metadata
         for actor in almeta.actors:
@@ -177,46 +232,44 @@ class Yara(ServiceBase):
 
         # Exploit / CVE metadata
         if almeta.exploits:
-            title_elements.append(f" [Exploits(s): {','.join(almeta.exploits)}] ")
+            title_elements.append(f"- Exploit(s): {', '.join(almeta.exploits)}")
         for exploit in almeta.exploits:
             section.add_tag('attribution.exploit', exploit)
 
-        # Include technique descriptions in the section summary
-        summary_elements = set()
+        # Include technique descriptions in the section behavior
         for (category, name) in almeta.techniques:
             descriptor = self.TECHNIQUE_DESCRIPTORS.get(category, None)
             if descriptor:
                 technique_type, technique_description = descriptor
                 section.add_tag(technique_type, name)
-                summary_elements.add(technique_description)
+                almeta.behavior.add(technique_description)
 
-        for (category, value) in almeta.infos:
-            if category == 'compiler':
-                section.add_tag('file.compiler', value)
-            elif category == 'libs':
-                section.add_tag('file.lib', value)
+        for (category, name) in almeta.infos:
+            descriptor = self.INFO_DESCRIPTORS.get(category, None)
+            if descriptor:
+                info_type, info_description = descriptor
+                section.add_tag(info_type, name)
+                almeta.behavior.add(info_description)
 
-        if summary_elements:
-            title_elements.append(f" (Summary: {', '.join(summary_elements)})")
-        for element in summary_elements:
+        # Summaries
+        if almeta.behavior:
+            title_elements.append(f"- Behavior: {', '.join(almeta.behavior)}")
+        for element in almeta.behavior:
             section.add_tag('file.behavior', element)
 
         title = " ".join(title_elements)
         section.title_text = title
 
-        json_body = dict()
+        json_body = dict(
+            namespace=match.namespace,
+            name=match.rule,
+        )
 
-        json_body['name'] = f"[{match.namespace}] {match.rule}"
-
-        if almeta.id and almeta.version and almeta.author:
-            json_body.update(dict(
-                id=almeta.id,
-                version=almeta.version,
-                author=almeta.author,
-            ))
-
-        if almeta.description:
-            json_body['description'] = almeta.description
+        for item in ['id', 'version', 'author', 'description', 'source', 'malware', 'info',
+                     'technique', 'tool', 'exploit', 'actor', 'exploit', 'category']:
+            val = almeta.__dict__.get(item, None)
+            if val:
+                json_body[item] = val
 
         string_match_data = self._add_string_match_data(match)
         if string_match_data:

@@ -17,7 +17,7 @@ pipelines:
           script:
             - export TAG=${BITBUCKET_TAG#v}
             - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
-            - docker build --build-arg version=$TAG -t cccs/assemblyline-service-yara:$TAG -t cccs/assemblyline-service-yara:latest ./yara_/
-            - docker build --build-arg version=$TAG -t cccs/assemblyline-service-tagcheck:$TAG -t cccs/assemblyline-service-tagcheck:latest ./tagcheck/
+            - docker build --build-arg version=$TAG -t cccs/assemblyline-service-yara:$TAG -t cccs/assemblyline-service-yara:latest -f ./yara_/Dockerfile .
+            - docker build --build-arg version=$TAG -t cccs/assemblyline-service-tagcheck:$TAG -t cccs/assemblyline-service-tagcheck:latest -f ./tagcheck/Dockerfile .
             - docker push cccs/assemblyline-service-yara
             - docker push cccs/assemblyline-service-tagcheck

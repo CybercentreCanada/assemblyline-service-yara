@@ -19,9 +19,6 @@ RUN pip install yara-python gitpython plyara
 RUN mkdir -p /mount/updates
 RUN mkdir -p /opt/al_service/yara_
 
-# Switch to assemblyline user
-USER assemblyline
-
 # Copy Yara service code
 WORKDIR /opt/al_service
 COPY ./yara_ ./yara_
@@ -31,3 +28,9 @@ RUN mv yara_/service_manifest.yml .
 
 # Cleanup
 RUN rm yara_/Dockerfile
+
+# Set owner
+RUN chown -R assemblyline /opt/al_service
+
+# Switch to assemblyline user
+USER assemblyline

@@ -342,14 +342,15 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
             raise e
 
     # Check if new signatures have been added
-    if al_client.signature.update_available(since=previous_update or '', sig_type='yara')['update_available']:
+    if al_client.signature.update_available(since=previous_update or '', sig_type=updater_type)['update_available']:
         LOGGER.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
 
         if not os.path.exists(update_output_path):
             os.makedirs(update_output_path)
 
         temp_zip_file = os.path.join(update_output_path, 'temp.zip')
-        al_client.signature.download(output=temp_zip_file, query="type:yara AND (status:NOISY OR status:DEPLOYED)")
+        al_client.signature.download(output=temp_zip_file,
+                                     query=f"type:{updater_type} AND (status:NOISY OR status:DEPLOYED)")
 
         if os.path.exists(temp_zip_file):
             with ZipFile(temp_zip_file, 'r') as zip_f:

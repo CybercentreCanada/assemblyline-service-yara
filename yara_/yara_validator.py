@@ -1,6 +1,9 @@
+import json
 import logging
+import os
 import re
 import subprocess
+import tempfile
 
 from assemblyline.common.str_utils import safe_str
 
@@ -67,17 +70,18 @@ class YaraValidator(object):
     def paranoid_rule_check(self, rulefile):
         # Run rules separately on command line to ensure there are no errors
         print_val = "--==Rules_validated++__"
-        cmd = "python3.7 -c " \
-              "\"import yara\n" \
-              "try: " \
-              "yara.compile('%s', externals=%s).match(data='');" \
-              "print('%s')\n" \
-              "except yara.SyntaxError as e:" \
-              "print(f'yara.SyntaxError.{ str(e) }')\""
-        p = subprocess.Popen(cmd % (rulefile, self.externals, print_val), stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True, cwd="/tmp")
+        external_file = os.path.join(tempfile.gettempdir(), "externals.json")
+        try:
+            with open(external_file, "wb") as out_json:
+                out_json.write(json.dumps(self.externals).encode("utf-8"))
 
-        stdout, stderr = p.communicate()
+            p = subprocess.Popen(f"python3 paranoid_check.py {rulefile} {external_file}",
+                                 cwd=os.path.dirname(os.path.realpath(__file__)),
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            stdout, stderr = p.communicate()
+
+        finally:
+            os.unlink(external_file)
 
         stdout = safe_str(stdout)
         stderr = safe_str(stderr)

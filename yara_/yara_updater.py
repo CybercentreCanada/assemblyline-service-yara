@@ -210,7 +210,7 @@ def replace_include(include, dirname, processed_files: Set[str]):
     return temp_lines, processed_files
 
 
-def yara_update(update_config_path, update_output_path, download_directory, externals) -> None:
+def yara_update(updater_type, update_config_path, update_output_path, download_directory, externals) -> None:
     """
     Using an update configuration file as an input, which contains a list of sources, download all the file(s).
     """
@@ -327,7 +327,7 @@ def yara_update(update_config_path, update_output_path, download_directory, exte
     user = update_config['api_user']
     api_key = update_config['api_key']
     al_client = get_client(server, apikey=(user, api_key), verify=False)
-    yara_importer = YaraImporter(al_client)
+    yara_importer = YaraImporter(updater_type, al_client)
 
     # Validating and importing the different signatures
     for base_file in files_sha256:
@@ -363,4 +363,4 @@ def yara_update(update_config_path, update_output_path, download_directory, exte
 
 
 if __name__ == '__main__':
-    yara_update(UPDATE_CONFIGURATION_PATH, UPDATE_OUTPUT_PATH, UPDATE_DIR, YARA_EXTERNALS)
+    yara_update("yara", UPDATE_CONFIGURATION_PATH, UPDATE_OUTPUT_PATH, UPDATE_DIR, YARA_EXTERNALS)

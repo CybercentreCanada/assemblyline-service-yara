@@ -9,8 +9,8 @@ UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', "/tmp/ta
 UPDATE_OUTPUT_PATH = os.environ.get('UPDATE_OUTPUT_PATH', "/tmp/tagcheck_updater_output")
 UPDATE_DIR = os.path.join(tempfile.gettempdir(), 'tagcheck_updates')
 
-YARA_EXTERNALS = {f'al_{x}': x for x in list(Tagging.flat_fields().keys())}
+YARA_EXTERNALS = {f'al_{x.replace(".", "_")}': '' for x in list(Tagging.flat_fields().keys())}
 
 
 if __name__ == '__main__':
-    yara_update(UPDATE_CONFIGURATION_PATH, UPDATE_OUTPUT_PATH, UPDATE_DIR, YARA_EXTERNALS)
+    yara_update("tagcheck", UPDATE_CONFIGURATION_PATH, UPDATE_OUTPUT_PATH, UPDATE_DIR, YARA_EXTERNALS)

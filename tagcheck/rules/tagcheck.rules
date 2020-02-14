@@ -5,7 +5,7 @@ rule cyberark_Stealing_Service_Credentials_registry_keys {
 		description = "https://www.cyberark.com/blog/cyberark-labs-research-stealing-service-credentials-achieve-full-domain-compromise/"
 		source = "CCCS"
 		category = "technique"
-		technique = "Steal Service Credential"
+		technique = "Steal service credential"
 
 	condition:
 		al_dynamic_registry_key matches /.*Security\\Policy\\Secrets\\SC.*/i and al_dynamic_registry_key matches /.*CurrentControlSet\\Services.*/i
@@ -18,7 +18,7 @@ rule persistence_msconfig_registry_key {
 		description = "Possible persistence mechanism in file through msconfig"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:MSconfig Registry"
+		technique = "persistence:MSconfig registry"
 
 	condition:
 		al_dynamic_registry_key matches /.*Microsoft\\Windows\\CurrentVersion\\Run\\msconfig.*/i
@@ -31,7 +31,7 @@ rule persistence_run_registry_key {
 		description = "Possible persistence mechanism in file through run registry"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:Run resgistry"
+		technique = "persistence:Run registry"
 
 	condition:
 		al_dynamic_registry_key matches /.*\\software\\microsoft\\windows\\currentversion\\run.*/i
@@ -44,7 +44,7 @@ rule persistence_session_manager_registry_key {
 		description = "Possible persistence mechanism in file through session manager"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:Session Manager Registry"
+		technique = "persistence:Session manager registry"
 
 	condition:
 		al_dynamic_registry_key matches /.*CurrentControlSet\\Control\\Session Manager\\BootExecute.*/i
@@ -57,7 +57,7 @@ rule persistence_runservices_registry_key {
 		description = "Possible persistence mechanism in file through Run Service Once"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:Run Service Registry"
+		technique = "persistence:Run service registry"
 
 	condition:
 		al_dynamic_registry_key matches /.*Microsoft\\Windows\\CurrentVersion\\RunServicesOnce.*/i
@@ -70,7 +70,7 @@ rule persistence_winlogon_notify_registry_key {
 		description = "Possible persistence mechanism in file through winlogon notify"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:Winlogon Notify"
+		technique = "persistence:Winlogon notify"
 
 	condition:
 		al_dynamic_registry_key matches /.*CurrentVersion\\Winlogon\\Notify.*/i
@@ -83,7 +83,7 @@ rule persistence_winlogon_userinit_registry_key {
 		description = "Possible persistence mechanism in file through winlogon userinit"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:Winlogon Userinit"
+		technique = "persistence:Winlogon userinit"
 
 	condition:
 		al_dynamic_registry_key matches /.*CurrentVersion\\Winlogon\\Userinit.*/i
@@ -96,7 +96,7 @@ rule persistence_winlogon_shell_registry_key {
 		description = "Possible persistence mechanism in file through winlogon shell"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:Winlogon Shell"
+		technique = "persistence:Winlogon shell"
 
 	condition:
 		al_dynamic_registry_key matches /.*CurrentVersion\\Winlogon\\Shell.*/i
@@ -109,7 +109,7 @@ rule persistence_shellservice_registry_key {
 		description = "Possible persistence mechanism in file through shell service delay load"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:Winlogon Shell Service"
+		technique = "persistence:Winlogon shell service"
 
 	condition:
 		al_dynamic_registry_key matches /.*CurrentVersion\\ShellServiceObjectDelayLoad.*/i
@@ -122,7 +122,7 @@ rule persistence_windows_load_registry_key {
 		description = "Possible persistence mechanism in file load registry key"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:Windows Load Registry"
+		technique = "persistence:Windows load registry"
 
 	condition:
 		al_dynamic_registry_key matches /.*CurrentVersion\\Windows\\load.*/i
@@ -135,7 +135,7 @@ rule persistence_shared_task_sched_registry_key {
 		description = "Possible persistence mechanism in file through shared task scheduler"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:Shared Task Scheduler"
+		technique = "persistence:Shared task scheduler"
 
 	condition:
 		al_dynamic_registry_key matches /.*CurrentVersion\\Explorer\\SharedTaskSched.*/i
@@ -148,7 +148,7 @@ rule persistence_explorer_run_registry_key {
 		description = "Possible persistence mechanism in file through explorer run"
 		source = "CCCS"
 		category = "technique"
-		technique = "persistence:Explorer Run"
+		technique = "persistence:Explorer run"
 
 	condition:
 		al_dynamic_registry_key matches /.*CurrentVersion\\policies\\Explorer\\Run.*/i

@@ -10,7 +10,7 @@ pipelines:
   tags:
     v*:
       - step:
-          name: Deploy Yara container to Docker Hub
+          name: Deploy containers to Docker Hub
           image: python:3.7
           services: [docker]
           deployment: container
@@ -18,14 +18,6 @@ pipelines:
             - export TAG=${BITBUCKET_TAG#v}
             - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
             - docker build --build-arg version=$TAG -t cccs/assemblyline-service-yara:$TAG -t cccs/assemblyline-service-yara:latest ./yara_/
-            - docker push cccs/assemblyline-service-yara
-      - step:
-          name: Deploy TagCheck container to Docker Hub
-          image: python:3.7
-          services: [docker]
-          deployment: container
-          script:
-            - export TAG=${BITBUCKET_TAG#v}
-            - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
             - docker build --build-arg version=$TAG -t cccs/assemblyline-service-tagcheck:$TAG -t cccs/assemblyline-service-tagcheck:latest ./tagcheck/
+            - docker push cccs/assemblyline-service-yara
             - docker push cccs/assemblyline-service-tagcheck

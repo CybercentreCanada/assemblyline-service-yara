@@ -18,6 +18,14 @@ FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY', "/mount/updates/
 
 
 class YaraMetadata(object):
+    MITRE_ATT_DEFAULTS = dict(
+        packer="T1045",
+        cryptography="T1032",
+        obfuscation="T1027",
+        keylogger="T1056",
+        shellcode="T1055"
+    )
+
     def __init__(self, match):
         meta = match.meta
         self.name = match.rule
@@ -38,6 +46,13 @@ class YaraMetadata(object):
         self.actor = meta.get('used_by', meta.get('actor', meta.get('threat_actor', None)))
         self.exploit = meta.get('exploit', None)
         self.al_tag = meta.get('al_tag', None)
+
+        def _set_default_attack_id(key):
+            if self.mitre_att:
+                return self.mitre_att
+            if key in self.MITRE_ATT_DEFAULTS:
+                return self.MITRE_ATT_DEFAULTS[key]
+            return None
 
         def _safe_split(comma_sep_list):
             if comma_sep_list is None:
@@ -94,6 +109,7 @@ class YaraMetadata(object):
                     if len(tokens) == 2:
                         category = tokens[0]
                         name = tokens[1]
+                        self.mitre_att = _set_default_attack_id(category)
                     else:
                         name = tokens[0]
                     self.techniques.append((category.strip(), name.strip()))
@@ -103,6 +119,7 @@ class YaraMetadata(object):
                 if len(tokens) == 2:
                     category = tokens[0]
                     name = tokens[1]
+                    self.mitre_att = _set_default_attack_id(category)
                 else:
                     name = tokens[0]
                 self.techniques.append((category.strip(), name.strip()))

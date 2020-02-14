@@ -11,13 +11,14 @@ DEFAULT_STATUS = "DEPLOYED"
 
 
 class YaraImporter(object):
-    def __init__(self, al_client, logger=None):
+    def __init__(self, importer_type, al_client, logger=None):
         if not logger:
             from assemblyline.common import log as al_log
             al_log.init_logging('yara_importer')
             logger = logging.getLogger('assemblyline.yara_importer')
             logger.setLevel(logging.INFO)
 
+        self.importer_type = importer_type
         self.update_client = al_client
         self.parser = Plyara()
         self.classification = forge.get_classification()
@@ -67,7 +68,7 @@ class YaraImporter(object):
                 signature_id=signature_id or signature.get('rule_name'),
                 source=source,
                 status=status,
-                type="yara",
+                type=self.importer_type,
             ))
             r = self.update_client.signature.add_update(sig.as_primitives())
 

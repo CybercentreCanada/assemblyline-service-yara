@@ -18,26 +18,45 @@ FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY', "/mount/updates/
 
 
 class YaraMetadata(object):
+    MITRE_ATT_DEFAULTS = dict(
+        packer="T1045",
+        cryptography="T1032",
+        obfuscation="T1027",
+        keylogger="T1056",
+        shellcode="T1055"
+    )
+
     def __init__(self, match):
         meta = match.meta
         self.name = match.rule
-        self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', f'{match.namespace}.{match.rule}')))
+        self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', None)))
         self.category = meta.get('category', meta.get('rule_group', 'info')).lower()
         self.malware_type = meta.get('malware_type', None)
         self.version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
         self.description = meta.get('description', None)
         self.classification = meta.get('classification', Classification.UNRESTRICTED)
         self.source = meta.get('source', meta.get('organisation', None))
-        self.summary = meta.get('summary', None)
-        self.score_override = meta.get('al_score', None)
+        self.summary = meta.get('summary', meta.get('behavior', None))
         self.author = meta.get('author', meta.get('poc', None))
         self.status = meta.get('status', None)  # Status assigned by the rule creator
-        self.al_status = meta.get(self.status, meta.get('al_status', 'TESTING'))
-        self.actor_type = meta.get('actor_type', meta.get('ta_type', None))
-        self.mitre_att = meta.get('mitre_att', None)
+        self.al_status = meta.get(self.status, meta.get('al_status', 'DEPLOYED'))
+        self.actor_type = meta.get('actor_type', meta.get('ta_type', meta.get('family', None)))
+        self.mitre_att = meta.get('mitre_att', meta.get("attack_id", None))
         self.mitre_group = meta.get('mitre_group', None)
+        self.actor = meta.get('used_by', meta.get('actor', meta.get('threat_actor', None)))
+        self.exploit = meta.get('exploit', None)
+        self.al_tag = meta.get('al_tag', None)
+
+        def _set_default_attack_id(key):
+            if self.mitre_att:
+                return self.mitre_att
+            if key in self.MITRE_ATT_DEFAULTS:
+                return self.MITRE_ATT_DEFAULTS[key]
+            return None
 
         def _safe_split(comma_sep_list):
+            if comma_sep_list is None:
+                return []
             return [e for e in comma_sep_list.split(',') if e]
 
         # Specifics about the category
@@ -47,9 +66,23 @@ class YaraMetadata(object):
         self.tool = meta.get('tool', None)
         self.malware = meta.get('malware', meta.get('implant', None))
 
-        self.actors = _safe_split(meta.get('used_by', ''))
-        self.summary = _safe_split(meta.get('summary', ''))
-        self.exploits = _safe_split(meta.get('exploit', ''))
+        self.actors = _safe_split(self.actor)
+        self.behavior = set(_safe_split(meta.get('summary', None)))
+        self.exploits = _safe_split(self.exploit)
+
+        # Parse and populate tag list
+        self.tags = []
+        if self.al_tag:
+            if ',' in self.malware:
+                for al_tag in self.al_tag.split(','):
+                    tokens = al_tag.split(':')
+                    if len(tokens) == 2:
+                        self.tags.append({"type": tokens[0], 'value': tokens[1]})
+
+            else:
+                tokens = self.al_tag.split(':')
+                if len(tokens) == 2:
+                    self.tags.append({"type": tokens[0], 'value': tokens[1]})
 
         # Parse and populate malware list
         self.malwares = []
@@ -61,7 +94,10 @@ class YaraMetadata(object):
                     malware_family = tokens[1] if (len(tokens) == 2) else ''
                     self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
             else:
-                self.malwares.append((self.malware, self.malware_type or ''))
+                tokens = self.malware.split(':')
+                malware_name = tokens[0]
+                malware_family = tokens[1] if (len(tokens) == 2) else self.malware_type or ''
+                self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
 
         # Parse and populate technique info
         self.techniques = []
@@ -73,11 +109,20 @@ class YaraMetadata(object):
                     if len(tokens) == 2:
                         category = tokens[0]
                         name = tokens[1]
+                        self.mitre_att = _set_default_attack_id(category)
                     else:
                         name = tokens[0]
                     self.techniques.append((category.strip(), name.strip()))
             else:
-                self.techniques.append((self.technique, self.technique))
+                tokens = self.technique.split(':')
+                category = ''
+                if len(tokens) == 2:
+                    category = tokens[0]
+                    name = tokens[1]
+                    self.mitre_att = _set_default_attack_id(category)
+                else:
+                    name = tokens[0]
+                self.techniques.append((category.strip(), name.strip()))
 
         # Parse and populate info
         self.infos = []
@@ -91,7 +136,12 @@ class YaraMetadata(object):
                     else:
                         self.infos.append((None, tokens[0]))
             else:
-                self.infos.append((self.info, self.info))
+                tokens = self.info.split(':', 1)
+                if len(tokens) == 2:
+                    # category, value
+                    self.infos.append((tokens[0], tokens[1]))
+                else:
+                    self.infos.append((None, tokens[0]))
 
 
 class Yara(ServiceBase):
@@ -105,24 +155,51 @@ class Yara(ServiceBase):
         persistance=('technique.persistence', 'Has persistence'),
     )
 
+    INFO_DESCRIPTORS = dict(
+        compiler=("file.compiler", "Compiled with known compiler"),
+        libs=("file.lib", "Using known library"),
+        lib=("file.lib", "Using known library")
+
+    )
+
     YARA_HEURISTICS_MAP = dict(
         info=1,
         technique=2,
         exploit=3,
         tool=4,
         malware=5,
+        safe=6,
+        tl1=7,
+        tl2=8,
+        tl3=9,
+        tl4=10,
+        tl5=11,
+        tl6=12,
+        tl7=13,
+        tl8=14,
+        tl9=15,
+        tl10=16,
     )
 
-    def __init__(self, config=None):
-        super(Yara, self).__init__(config)
+    def __init__(self, config=None, name=None, externals=None):
+        super().__init__(config)
+
+        if externals is None:
+            externals = ['submitter', 'mime', 'file_type']
+
+        if name is None:
+            self.name = "Yara"
+        else:
+            self.name = name
+
         self.initialization_lock = threading.RLock()
         self.rules = None
         self.rules_list = []
-        self.task = None
+        self.deep_scan = None
 
         # Load rules and externals
         self.rules_hash = self._get_rules_hash()
-        self.yara_externals = {f'al_{x}': x for x in ['submitter', 'mime', 'file_type']}
+        self.yara_externals = {f'al_{x.replace(".", "_")}': "" for x in externals}
 
     def _add_resultinfo_for_match(self, result: Result, match):
         """
@@ -139,18 +216,19 @@ class Yara(ServiceBase):
         almeta = YaraMetadata(match)
         self._normalize_metadata(almeta)
 
-        if not self.task.deep_scan and almeta.al_status == "NOISY":
-            almeta.score_override = 0
-
         section = ResultSection('', classification=almeta.classification)
-        section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1),
-                              signature=f'{match.namespace}.{match.rule}', attack_id=almeta.mitre_att)
-        section.add_tag('file.rule.yara', f'{match.namespace}.{match.rule}')
+        if self.deep_scan or almeta.al_status != "NOISY":
+            section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1),
+                                  signature=f'{match.namespace}.{match.rule}', attack_id=almeta.mitre_att)
+        section.add_tag(f'file.rule.{self.name.lower()}', f'{match.namespace}.{match.rule}')
 
         title_elements = [f"[{match.namespace}] {match.rule}", ]
 
         if almeta.actor_type:
             section.add_tag('attribution.actor', almeta.actor_type)
+
+        for tag in almeta.tags:
+            section.add_tag(tag['type'], tag['value'])
 
         # Malware Tags
         implant_title_elements = []
@@ -162,7 +240,7 @@ class Yara(ServiceBase):
                 implant_title_elements.append(implant_family)
                 section.add_tag('attribution.family', implant_family)
         if implant_title_elements:
-            title_elements.append(f"implant: {','.join(implant_title_elements)}")
+            title_elements.append(f"- Implant(s): {', '.join(implant_title_elements)}")
 
         # Threat Actor metadata
         for actor in almeta.actors:
@@ -171,46 +249,44 @@ class Yara(ServiceBase):
 
         # Exploit / CVE metadata
         if almeta.exploits:
-            title_elements.append(f" [Exploits(s): {','.join(almeta.exploits)}] ")
+            title_elements.append(f"- Exploit(s): {', '.join(almeta.exploits)}")
         for exploit in almeta.exploits:
             section.add_tag('attribution.exploit', exploit)
 
-        # Include technique descriptions in the section summary
-        summary_elements = set()
+        # Include technique descriptions in the section behavior
         for (category, name) in almeta.techniques:
             descriptor = self.TECHNIQUE_DESCRIPTORS.get(category, None)
             if descriptor:
                 technique_type, technique_description = descriptor
                 section.add_tag(technique_type, name)
-                summary_elements.add(technique_description)
+                almeta.behavior.add(technique_description)
 
-        for (category, value) in almeta.infos:
-            if category == 'compiler':
-                section.add_tag('file.compiler', value)
-            elif category == 'libs':
-                section.add_tag('file.lib', value)
+        for (category, name) in almeta.infos:
+            descriptor = self.INFO_DESCRIPTORS.get(category, None)
+            if descriptor:
+                info_type, info_description = descriptor
+                section.add_tag(info_type, name)
+                almeta.behavior.add(info_description)
 
-        if summary_elements:
-            title_elements.append(f" (Summary: {', '.join(summary_elements)})")
-        for element in summary_elements:
+        # Summaries
+        if almeta.behavior:
+            title_elements.append(f"- Behavior: {', '.join(almeta.behavior)}")
+        for element in almeta.behavior:
             section.add_tag('file.behavior', element)
 
         title = " ".join(title_elements)
         section.title_text = title
 
-        json_body = dict()
+        json_body = dict(
+            namespace=match.namespace,
+            name=match.rule,
+        )
 
-        json_body['name'] = f"[{match.namespace}] {match.rule}"
-
-        if almeta.id and almeta.version and almeta.author:
-            json_body.update(dict(
-                id=almeta.id,
-                version=almeta.version,
-                author=almeta.author,
-            ))
-
-        if almeta.description:
-            json_body['description'] = almeta.description
+        for item in ['id', 'version', 'author', 'description', 'source', 'malware', 'info',
+                     'technique', 'tool', 'exploit', 'actor', 'exploit', 'category']:
+            val = almeta.__dict__.get(item, None)
+            if val:
+                json_body[item] = val
 
         string_match_data = self._add_string_match_data(match)
         if string_match_data:
@@ -357,7 +433,7 @@ class Yara(ServiceBase):
 
     def _get_rules_hash(self):
         if not os.path.exists(FILE_UPDATE_DIRECTORY):
-            self.log.warning("Yara rules directory not found")
+            self.log.warning(f"{self.name} rules directory not found")
             return None
 
         try:
@@ -367,13 +443,13 @@ class Yara(ServiceBase):
                                    and not d.startswith('.tmp')],
                                   key=os.path.getctime)
         except ValueError:
-            self.log.warning("No valid yara rules directory found")
+            self.log.warning(f"No valid {self.name} rules directory found")
             return None
 
         self.rules_list = [str(f) for f in Path(rules_directory).rglob("*") if os.path.isfile(str(f))]
         all_sha256s = [get_sha256_for_file(f) for f in self.rules_list]
 
-        self.log.info(f"Yara will load the following rule files: {self.rules_list}")
+        self.log.info(f"{self.name} will load the following rule files: {self.rules_list}")
 
         if len(all_sha256s) == 1:
             return all_sha256s[0][:7]
@@ -386,12 +462,12 @@ class Yara(ServiceBase):
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
         if not self.rules_list:
-            raise Exception("No valid YARA rules files found")
+            raise Exception(f"No valid {self.name} rules files found")
 
         yar_files = {os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list}
 
         if not yar_files:
-            raise Exception("No valid YARA rules files found")
+            raise Exception(f"No valid {self.name} rules files found")
 
         rules = yara.compile(filepaths=yar_files, externals=self.yara_externals)
 
@@ -399,7 +475,7 @@ class Yara(ServiceBase):
             with self.initialization_lock:
                 self.rules = rules
                 return
-        raise Exception("No valid YARA rules files found")
+        raise Exception(f"No valid {self.name} rules files found")
 
     # noinspection PyBroadException
     def execute(self, request):
@@ -407,34 +483,38 @@ class Yara(ServiceBase):
         if not self.rules:
             return
 
-        request.set_service_context(f"Yara version: {self.get_tool_version()}")
+        request.set_service_context(f"{self.name} version: {self.get_tool_version()}")
 
-        self.task = request.task
+        self.deep_scan = request.task.deep_scan
         local_filename = request.file_path
+        tags = {f"al_{k.replace('.', '_')}": i for k, i in request.task.tags.items()}
 
         yara_externals = {}
-        for k, i in self.yara_externals.items():
+        for k in self.yara_externals.keys():
             # Check default request.task fields
-            sval = self.task.__dict__.get(i, None)
+            sval = request.task.__dict__.get(k, None)
 
             # if not sval:
             #     # Check metadata dictionary
-            #     sval = self.task.metadata.get(i, None)
+            #     sval = request.task.metadata.get(k, None)
 
             if not sval:
                 # Check params dictionary
-                sval = self.task.service_config.get(i, None)
+                sval = request.task.service_config.get(k, None)
+
+            if not sval:
+                # Check tags list
+                val_list = tags.get(k, None)
+                if val_list:
+                    sval = " | ".join(val_list)
 
             if not sval:
                 # Check temp submission data
-                sval = self.task.temp_submission_data.get(i, None)
-
-            # Create dummy value if item not found
-            if not sval:
-                sval = "__DOES_NOT_MATCH__"
+                sval = request.task.temp_submission_data.get(k, None)
 
             # Normalize unicode with safe_str and make sure everything else is a string
-            yara_externals[k] = str(safe_str(sval))
+            if sval:
+                yara_externals[k] = safe_str(sval)
 
         with self.initialization_lock:
             try:
@@ -449,16 +529,15 @@ class Yara(ServiceBase):
                         # Fast mode == Yara skips strings already found
                         matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
                         result = self._extract_result_from_matches(matches)
-                        section = ResultSection("Service Warnings")
+                        section = ResultSection("Service Warnings", parent=result)
                         section.add_line("Too many matches detected with current ruleset. "
-                                         "YARA forced to scan in fast mode.")
+                                         f"{self.name} forced to scan in fast mode.")
                         request.result = result
                     except Exception:
-                        self.log.warning(f"YARA internal error 30 detected on submission {self.task.sid}")
+                        self.log.warning(f"YARA internal error 30 detected on submission {request.task.sid}")
                         result = Result()
-                        section = ResultSection("YARA scan not completed.")
+                        section = ResultSection(f"{self.name} scan not completed.", parent=result)
                         section.add_line("File returned too many matches with current rule set and YARA exited.")
-                        result.add_section(section)
                         request.result = result
 
     def get_tool_version(self):
@@ -469,7 +548,7 @@ class Yara(ServiceBase):
         return yara.YARA_VERSION
 
     def get_service_version(self):
-        basic_version = super(Yara, self).get_service_version()
+        basic_version = super().get_service_version()
         if self.rules_hash and self.rules_hash not in basic_version:
             return f'{basic_version}.r{self.rules_hash}'
         else:
@@ -484,6 +563,6 @@ class Yara(ServiceBase):
             self._load_rules()
 
         except Exception as e:
-            raise Exception(f"Something went wrong while trying to load YARA rules: {str(e)}")
+            raise Exception(f"Something went wrong while trying to load {self.name} rules: {str(e)}")
 
-        self.log.info(f"YARA started with service version: {self.get_service_version()}")
+        self.log.info(f"{self.name} started with service version: {self.get_service_version()}")

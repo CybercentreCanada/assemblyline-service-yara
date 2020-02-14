@@ -15,12 +15,19 @@ RUN make install
 
 RUN pip install yara-python gitpython plyara
 
-# Create update directory
+# Create directories
 RUN mkdir -p /mount/updates
+RUN mkdir -p /opt/al_service/yara_
 
 # Switch to assemblyline user
 USER assemblyline
 
 # Copy Yara service code
 WORKDIR /opt/al_service
-COPY . .
+COPY ./yara_ ./yara_
+
+# Setting service manifest
+RUN mv yara_/service_manifest.yml .
+
+# Cleanup
+RUN rm yara_/Dockerfile

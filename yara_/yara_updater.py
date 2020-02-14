@@ -33,7 +33,7 @@ UPDATE_DIR = os.path.join(tempfile.gettempdir(), 'yara_updates')
 YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
 
 
-def _compile_rules(rules_file):
+def _compile_rules(rules_file, externals):
     """
     Saves Yara rule content to file, validates the content with Yara Validator, and uses Yara python to compile
     the rule set.
@@ -45,7 +45,7 @@ def _compile_rules(rules_file):
         Compiled rules, compiled rules md5.
     """
     try:
-        validate = YaraValidator(externals=YARA_EXTERNALS, logger=LOGGER)
+        validate = YaraValidator(externals=externals, logger=LOGGER)
         validate.validate_rules(rules_file)
     except Exception as e:
         raise e
@@ -69,13 +69,18 @@ def guess_category(rule_file_name):
     return None
 
 
-def url_download(source: Dict[str, Any], previous_update=None) -> Optional[str]:
+def url_download(download_directory: str, source: Dict[str, Any], previous_update=None) -> Optional[str]:
     """
 
+    :param download_directory:
     :param source:
     :param previous_update:
     :return:
     """
+    if os.path.exists(download_directory):
+        shutil.rmtree(download_directory)
+    os.makedirs(download_directory)
+
     name = source['name']
     uri = source['uri']
     username = source.get('username', None)
@@ -118,7 +123,7 @@ def url_download(source: Dict[str, Any], previous_update=None) -> Optional[str]:
             return
         elif response.ok:
             file_name = os.path.basename(f"{name}.yar")  # TODO: make filename as source name with extension .yar
-            file_path = os.path.join(UPDATE_DIR, file_name)
+            file_path = os.path.join(download_directory, file_name)
             with open(file_path, 'wb') as f:
                 f.write(response.content)
 
@@ -137,15 +142,16 @@ def url_download(source: Dict[str, Any], previous_update=None) -> Optional[str]:
         session.close()
 
 
-def git_clone_repo(source: Dict[str, Any], previous_update=None) -> List[str] and List[str]:
+def git_clone_repo(download_directory: str, source: Dict[str, Any], previous_update=None) -> List[str] and List[str]:
     name = source['name']
     url = source['uri']
     pattern = source.get('pattern', None)
     key = source.get('private_key', None)
 
-    clone_dir = os.path.join(UPDATE_DIR, name)
+    clone_dir = os.path.join(download_directory, name)
     if os.path.exists(clone_dir):
         shutil.rmtree(clone_dir)
+    os.makedirs(clone_dir)
 
     if key:
         LOGGER.info(f"key found for {url}")
@@ -204,17 +210,17 @@ def replace_include(include, dirname, processed_files: Set[str]):
     return temp_lines, processed_files
 
 
-def yara_update() -> None:
+def yara_update(updater_type, update_config_path, update_output_path, download_directory, externals) -> None:
     """
     Using an update configuration file as an input, which contains a list of sources, download all the file(s).
     """
     # Load updater configuration
     update_config = {}
-    if UPDATE_CONFIGURATION_PATH and os.path.exists(UPDATE_CONFIGURATION_PATH):
-        with open(UPDATE_CONFIGURATION_PATH, 'r') as yml_fh:
+    if update_config_path and os.path.exists(update_config_path):
+        with open(update_config_path, 'r') as yml_fh:
             update_config = yaml.safe_load(yml_fh)
     else:
-        LOGGER.error(f"Update configuration file doesn't exist: {UPDATE_CONFIGURATION_PATH}")
+        LOGGER.error(f"Update configuration file doesn't exist: {update_config_path}")
         exit()
 
     # Exit if no update sources given
@@ -230,7 +236,7 @@ def yara_update() -> None:
     files_sha256 = {}
 
     # Create working directory
-    updater_working_dir = os.path.join(tempfile.gettempdir(), 'yara_updater_working_dir')
+    updater_working_dir = os.path.join(tempfile.gettempdir(), 'updater_working_dir')
     if os.path.exists(updater_working_dir):
         shutil.rmtree(updater_working_dir)
     os.makedirs(updater_working_dir)
@@ -243,9 +249,9 @@ def yara_update() -> None:
         uri: str = source['uri']
 
         if uri.endswith('.git'):
-            files = git_clone_repo(source, previous_update=previous_update)
+            files = git_clone_repo(download_directory, source, previous_update=previous_update)
         else:
-            files = [url_download(source, previous_update=previous_update)]
+            files = [url_download(download_directory, source, previous_update=previous_update)]
 
         processed_files = set()
 
@@ -312,7 +318,7 @@ def yara_update() -> None:
 
     if not files_sha256:
         LOGGER.info('No new YARA rules files to process')
-        shutil.rmtree(UPDATE_OUTPUT_PATH, ignore_errors=True)
+        shutil.rmtree(update_output_path, ignore_errors=True)
         exit()
 
     LOGGER.info("YARA rules file(s) successfully downloaded")
@@ -321,7 +327,7 @@ def yara_update() -> None:
     user = update_config['api_user']
     api_key = update_config['api_key']
     al_client = get_client(server, apikey=(user, api_key), verify=False)
-    yara_importer = YaraImporter(al_client)
+    yara_importer = YaraImporter(updater_type, al_client)
 
     # Validating and importing the different signatures
     for base_file in files_sha256:
@@ -330,31 +336,32 @@ def yara_update() -> None:
         source_name = os.path.splitext(os.path.basename(cur_file))[0]
 
         try:
-            _compile_rules(cur_file)
+            _compile_rules(cur_file, externals)
             yara_importer.import_file(cur_file, source_name)
         except Exception as e:
             raise e
 
     # Check if new signatures have been added
-    if al_client.signature.update_available(since=previous_update or '', sig_type='yara')['update_available']:
+    if al_client.signature.update_available(since=previous_update or '', sig_type=updater_type)['update_available']:
         LOGGER.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
 
-        if not os.path.exists(UPDATE_OUTPUT_PATH):
-            os.makedirs(UPDATE_OUTPUT_PATH)
+        if not os.path.exists(update_output_path):
+            os.makedirs(update_output_path)
 
-        temp_zip_file = os.path.join(UPDATE_OUTPUT_PATH, 'temp.zip')
-        al_client.signature.download(output=temp_zip_file, query="type:yara AND (status:NOISY OR status:DEPLOYED)")
+        temp_zip_file = os.path.join(update_output_path, 'temp.zip')
+        al_client.signature.download(output=temp_zip_file,
+                                     query=f"type:{updater_type} AND (status:NOISY OR status:DEPLOYED)")
 
         if os.path.exists(temp_zip_file):
             with ZipFile(temp_zip_file, 'r') as zip_f:
-                zip_f.extractall(UPDATE_OUTPUT_PATH)
+                zip_f.extractall(update_output_path)
 
             os.remove(temp_zip_file)
 
         # Create the response yaml
-        with open(os.path.join(UPDATE_OUTPUT_PATH, 'response.yaml'), 'w') as yml_fh:
+        with open(os.path.join(update_output_path, 'response.yaml'), 'w') as yml_fh:
             yaml.safe_dump(dict(hash=json.dumps(files_sha256)), yml_fh)
 
 
 if __name__ == '__main__':
-    yara_update()
+    yara_update("yara", UPDATE_CONFIGURATION_PATH, UPDATE_OUTPUT_PATH, UPDATE_DIR, YARA_EXTERNALS)

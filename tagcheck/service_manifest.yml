@@ -129,3 +129,4 @@ update_config:
     - name: cccs
       uri: https://assemblyline-support.s3.amazonaws.com/tagcheck.rules
   update_interval_seconds: 86400  # 24 hours
+  wait_for_update: true

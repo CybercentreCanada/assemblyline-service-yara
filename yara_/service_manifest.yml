@@ -117,7 +117,7 @@ heuristics:
     description: Yara rule - Threat level 10
 
 docker_config:
-  image: cccs/assemblyline-service-yara:latest
+  image: ${REGISTRY}cccs/assemblyline-service-yara:latest
   cpu_cores: 1.0
   ram_mb: 768
 
@@ -127,7 +127,7 @@ update_config:
   run_options:
     allow_internet_access: true
     command: ["python", "-m", "yara_.yara_updater"]
-    image: cccs/assemblyline-service-yara:latest
+    image: ${REGISTRY}cccs/assemblyline-service-yara:latest
   sources:
     - name: yr_git
       pattern: .*_index.yar$

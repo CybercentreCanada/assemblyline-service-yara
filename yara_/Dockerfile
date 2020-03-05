@@ -2,7 +2,7 @@ FROM cccs/assemblyline-v4-service-base:latest
 
 ENV SERVICE_PATH yara_.yara_.Yara
 
-RUN apt-get update && apt-get install -y git libssl-dev libmagic-dev automake libtool make gcc
+RUN apt-get update && apt-get install -y git libssl-dev libmagic-dev automake libtool make gcc wget  && rm -rf /var/lib/apt/lists/*
 
 # Compile and install YARA
 RUN wget -O /tmp/yara.tar.gz https://github.com/VirusTotal/yara/archive/v3.11.0.tar.gz
@@ -13,7 +13,7 @@ RUN ./configure --enable-magic --enable-dotnet --with-crypto
 RUN make
 RUN make install
 
-RUN pip install yara-python gitpython plyara
+RUN pip install yara-python gitpython plyara && rm -rf ~/.cache/pip
 
 # Create directories
 RUN mkdir -p /mount/updates

@@ -114,7 +114,7 @@ heuristics:
     description: TagCheck rule - Threat level 10
 
 docker_config:
-  image: cccs/assemblyline-service-tagcheck:latest
+  image: ${REGISTRY}cccs/assemblyline-service-tagcheck:latest
   cpu_cores: 1.0
   ram_mb: 768
 
@@ -124,7 +124,7 @@ update_config:
   run_options:
     allow_internet_access: true
     command: ["python", "-m", "tagcheck.tagcheck_updater"]
-    image: cccs/assemblyline-service-tagcheck:latest
+    image: ${REGISTRY}cccs/assemblyline-service-tagcheck:latest
   sources:
     - name: cccs
       uri: https://assemblyline-support.s3.amazonaws.com/tagcheck.rules

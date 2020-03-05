@@ -27,6 +27,7 @@ class YaraImporter(object):
     def _save_signatures(self, signatures, source, default_status=DEFAULT_STATUS):
         saved_sigs = []
         order = 1
+        upload_list = []
         for signature in signatures:
             classification = self.classification.UNRESTRICTED
             signature_id = None
@@ -70,16 +71,11 @@ class YaraImporter(object):
                 status=status,
                 type=self.importer_type,
             ))
-            r = self.update_client.signature.add_update(sig.as_primitives())
+            upload_list.append(sig.as_primitives(hidden_fields=True))
+            order += 1
 
-            if r['success']:
-                self.log.info(f"Successfully added signature {signature.get('rule_name')} (ID: {r['id']})")
-                saved_sigs.append(sig)
-                order += 1
-            else:
-                self.log.warning(f"Failed to add signature {signature.get('rule_name')}")
-
-        self.log.info(f"Imported {order - 1} signatures from {source} into Assemblyline")
+        r = self.update_client.signature.add_update_many(upload_list, source, self.importer_type)
+        self.log.info(f"Imported {r['success']}/{order - 1} signatures from {source} into Assemblyline")
 
         return saved_sigs
 

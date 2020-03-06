@@ -71,10 +71,10 @@ class YaraImporter(object):
                 status=status,
                 type=self.importer_type,
             ))
-            upload_list.append(sig.as_primitives(hidden_fields=True))
+            upload_list.append(sig.as_primitives())
             order += 1
 
-        r = self.update_client.signature.add_update_many(upload_list, source, self.importer_type)
+        r = self.update_client.signature.add_update_many(source, self.importer_type, upload_list)
         self.log.info(f"Imported {r['success']}/{order - 1} signatures from {source} into Assemblyline")
 
         return saved_sigs

@@ -2,6 +2,8 @@ FROM cccs/assemblyline-v4-service-base:latest
 
 ENV SERVICE_PATH tagcheck.tagcheck.TagCheck
 
+USER root
+
 ######################################
 # Tagcheck will now use yara for it's syntax, let's install yara the same way then the yara service
 RUN apt-get update && apt-get install -y git libssl-dev libmagic-dev automake libtool make gcc wget && rm -rf /var/lib/apt/lists/*
@@ -15,7 +17,6 @@ RUN ./configure --enable-magic --enable-dotnet --with-crypto
 RUN make
 RUN make install
 
-RUN pip install yara-python gitpython plyara && rm -rf ~/.cache/pip
 # Done installing yara
 #####################################
 
@@ -42,3 +43,5 @@ RUN chown -R assemblyline /opt/al_service
 
 # Switch to assemblyline user
 USER assemblyline
+
+RUN pip install --user yara-python gitpython plyara && rm -rf ~/.cache/pip

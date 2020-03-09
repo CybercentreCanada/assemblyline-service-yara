@@ -25,7 +25,6 @@ class YaraImporter(object):
         self.log = logger
 
     def _save_signatures(self, signatures, source, default_status=DEFAULT_STATUS):
-        saved_sigs = []
         order = 1
         upload_list = []
         for signature in signatures:
@@ -77,7 +76,7 @@ class YaraImporter(object):
         r = self.update_client.signature.add_update_many(source, self.importer_type, upload_list)
         self.log.info(f"Imported {r['success']}/{order - 1} signatures from {source} into Assemblyline")
 
-        return saved_sigs
+        return r['success']
 
     def _split_signatures(self, data):
         self.parser = Plyara()

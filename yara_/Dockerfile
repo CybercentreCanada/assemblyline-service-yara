@@ -1,8 +1,12 @@
-FROM cccs/assemblyline-v4-service-base:latest
-
+FROM cccs/assemblyline-v4-service-base:latest AS base
 ENV SERVICE_PATH yara_.yara_.Yara
 
+# Install runtime libraries we will need later
 USER root
+RUN apt-get update && apt-get install -y git libssl1.1 libmagic1 && rm -rf /var/lib/apt/lists/*
+
+# Create a temporary image to do our compiling in
+FROM base AS build
 
 RUN apt-get update && apt-get install -y git libssl-dev libmagic-dev automake libtool make gcc wget  && rm -rf /var/lib/apt/lists/*
 
@@ -11,9 +15,28 @@ RUN wget -O /tmp/yara.tar.gz https://github.com/VirusTotal/yara/archive/v3.11.0.
 RUN tar -zxf /tmp/yara.tar.gz -C /tmp
 WORKDIR /tmp/yara-3.11.0
 RUN ./bootstrap.sh
-RUN ./configure --enable-magic --enable-dotnet --with-crypto
+RUN ./configure --enable-magic --enable-dotnet --with-crypto --prefix /tmp/yara_install
 RUN make
 RUN make install
+
+# Build the yara python plugins
+USER assemblyline
+RUN touch /tmp/before-pip
+RUN pip install --user yara-python gitpython plyara && rm -rf ~/.cache/pip
+
+# Remove files that existed before the pip install so that our copy command below doesn't take a snapshot of
+# files that already exist in the base image
+RUN find /var/lib/assemblyline/.local -type f ! -newer /tmp/before-pip -delete
+
+# Switch back to root and change the ownership of the files to be copied due to bitbucket pipeline uid nonsense
+USER root
+RUN chown root:root -R /var/lib/assemblyline/.local
+
+# Revert back to before the compile
+FROM base
+
+COPY --from=build /tmp/yara_install /usr/local
+COPY --chown=assemblyline:assemblyline --from=build /var/lib/assemblyline/.local /var/lib/assemblyline/.local
 
 # Create directories
 RUN mkdir -p /mount/updates
@@ -35,4 +58,3 @@ RUN chown -R assemblyline /opt/al_service
 # Switch to assemblyline user
 USER assemblyline
 
-RUN pip install --user yara-python gitpython plyara && rm -rf ~/.cache/pip

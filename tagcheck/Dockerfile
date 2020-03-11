@@ -1,47 +1,12 @@
-FROM cccs/assemblyline-v4-service-base:latest
+FROM cccs/assemblyline-service-yara:latest
 
-ENV SERVICE_PATH tagcheck.tagcheck.TagCheck
-
-USER root
-
-######################################
-# Tagcheck will now use yara for it's syntax, let's install yara the same way then the yara service
-RUN apt-get update && apt-get install -y git libssl-dev libmagic-dev automake libtool make gcc wget && rm -rf /var/lib/apt/lists/*
-
-# Compile and install YARA
-RUN wget -O /tmp/yara.tar.gz https://github.com/VirusTotal/yara/archive/v3.11.0.tar.gz
-RUN tar -zxf /tmp/yara.tar.gz -C /tmp
-WORKDIR /tmp/yara-3.11.0
-RUN ./bootstrap.sh
-RUN ./configure --enable-magic --enable-dotnet --with-crypto
-RUN make
-RUN make install
-
-# Done installing yara
-#####################################
-
-# Create directories
-RUN mkdir -p /mount/updates
-RUN mkdir -p /opt/al_service/yara_
+# Build the tagcheck container as a variant of the yara container where the additional
+# tagcheck service code has been copied in
 RUN mkdir -p /opt/al_service/tagcheck
-
-# Copy Tagcheck service code
-WORKDIR /opt/al_service
-COPY ./yara_ ./yara_
 COPY ./tagcheck ./tagcheck
+RUN rm tagcheck/Dockerfile
 
-# Setting service manifest
+# Over write the service path/manafest
+ENV SERVICE_PATH tagcheck.tagcheck.TagCheck
 RUN mv tagcheck/service_manifest.yml .
 
-# Cleanup
-RUN rm tagcheck/Dockerfile
-RUN rm yara_/service_manifest.yml
-RUN rm yara_/Dockerfile
-
-# Set owner
-RUN chown -R assemblyline /opt/al_service
-
-# Switch to assemblyline user
-USER assemblyline
-
-RUN pip install --user yara-python gitpython plyara && rm -rf ~/.cache/pip

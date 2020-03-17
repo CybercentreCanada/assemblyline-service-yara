@@ -24,11 +24,11 @@ class YaraImporter(object):
         self.classification = forge.get_classification()
         self.log = logger
 
-    def _save_signatures(self, signatures, source, default_status=DEFAULT_STATUS):
+    def _save_signatures(self, signatures, source, default_status=DEFAULT_STATUS, default_classification=None):
         order = 1
         upload_list = []
         for signature in signatures:
-            classification = self.classification.UNRESTRICTED
+            classification = default_classification or self.classification.UNRESTRICTED
             signature_id = None
             version = 1
             status = default_status
@@ -82,15 +82,19 @@ class YaraImporter(object):
         self.parser = Plyara()
         return self.parser.parse_string(data)
 
-    def import_data(self, yara_bin, source, default_status=DEFAULT_STATUS):
-        return self._save_signatures(self._split_signatures(yara_bin), source, default_status=default_status)
+    def import_data(self, yara_bin, source, default_status=DEFAULT_STATUS,
+                    default_classification=None):
+        return self._save_signatures(self._split_signatures(yara_bin), source, default_status=default_status,
+                                     default_classification=default_classification)
 
-    def import_file(self, file_path: str, source: str, default_status=DEFAULT_STATUS):
+    def import_file(self, file_path: str, source: str, default_status=DEFAULT_STATUS,
+                    default_classification=None):
         self.log.info(f"Importing file: {file_path}")
         cur_file = os.path.expanduser(file_path)
         if os.path.exists(cur_file):
             with open(cur_file, "r") as yara_file:
                 yara_bin = yara_file.read()
-                return self.import_data(yara_bin, source or os.path.basename(cur_file), default_status=default_status)
+                return self.import_data(yara_bin, source or os.path.basename(cur_file),
+                                        default_status=default_status, default_classification=default_classification)
         else:
             raise Exception(f"File {cur_file} does not exists.")

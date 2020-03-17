@@ -11,6 +11,7 @@ from zipfile import ZipFile
 
 import requests
 import yaml
+from assemblyline.common import forge
 from assemblyline.common.isotime import iso_to_epoch
 from assemblyline_client import get_client
 from git import Repo
@@ -22,6 +23,7 @@ from yara_.yara_importer import YaraImporter
 from yara_.yara_validator import YaraValidator
 
 al_log.init_logging('service_updater')
+classification = forge.get_classification()
 
 LOGGER = logging.getLogger('assemblyline.service_updater')
 
@@ -234,6 +236,7 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
         previous_hash = json.loads(previous_hash)
     sources = {source['name']: source for source in update_config['sources']}
     files_sha256 = {}
+    files_default_classification = {}
 
     # Create working directory
     updater_working_dir = os.path.join(tempfile.gettempdir(), 'updater_working_dir')
@@ -313,6 +316,8 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
             sha256 = get_sha256_for_file(file_name)
             if sha256 != previous_hash.get(cache_name, None):
                 files_sha256[cache_name] = sha256
+                files_default_classification[cache_name] = source.get('default_classification',
+                                                                      classification.UNRESTRICTED)
             else:
                 LOGGER.info(f'File {cache_name} has not changed since last run. Skipping it...')
 
@@ -334,10 +339,11 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
         LOGGER.info(f"Validating output file: {base_file}")
         cur_file = os.path.join(updater_working_dir, base_file)
         source_name = os.path.splitext(os.path.basename(cur_file))[0]
+        default_classification = files_default_classification.get(base_file, classification.UNRESTRICTED)
 
         try:
             _compile_rules(cur_file, externals)
-            yara_importer.import_file(cur_file, source_name)
+            yara_importer.import_file(cur_file, source_name, default_classification=default_classification)
         except Exception as e:
             raise e
 

@@ -22,7 +22,7 @@ RUN make install
 # Build the yara python plugins
 USER assemblyline
 RUN touch /tmp/before-pip
-RUN pip install --user yara-python gitpython plyara && rm -rf ~/.cache/pip
+RUN pip install --no-cache-dir --user yara-python gitpython plyara && rm -rf ~/.cache/pip
 
 # Remove files that existed before the pip install so that our copy command below doesn't take a snapshot of
 # files that already exist in the base image

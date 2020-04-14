@@ -328,11 +328,11 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
                 LOGGER.info(f'File {cache_name} has not changed since last run. Skipping it...')
 
     if not files_sha256:
-        LOGGER.info('No new YARA rules files to process')
+        LOGGER.info(f'No new {updater_type.upper()} rules files to process')
         shutil.rmtree(update_output_path, ignore_errors=True)
         exit()
 
-    LOGGER.info("YARA rules file(s) successfully downloaded")
+    LOGGER.info(f"{updater_type.upper()} rules file(s) successfully downloaded")
 
     server = update_config['ui_server']
     user = update_config['api_user']

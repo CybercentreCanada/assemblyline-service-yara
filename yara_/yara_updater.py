@@ -108,6 +108,7 @@ def url_download(download_directory: str, source: Dict[str, Any], previous_updat
             # Compare the last modified time with the last updated time
             if previous_update and last_modified <= previous_update:
                 # File has not been modified since last update, do nothing
+                LOGGER.info("The file has not been modified since last run, skipping...")
                 return
 
         if previous_update:
@@ -122,6 +123,7 @@ def url_download(download_directory: str, source: Dict[str, Any], previous_updat
         # Check the response code
         if response.status_code == requests.codes['not_modified']:
             # File has not been modified since last update, do nothing
+            LOGGER.info("The file has not been modified since last run, skipping...")
             return
         elif response.ok:
             file_name = os.path.basename(f"{name}.yar")  # TODO: make filename as source name with extension .yar
@@ -174,6 +176,7 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], previous_upd
             previous_update = iso_to_epoch(previous_update)
         for c in repo.iter_commits():
             if c.committed_date < previous_update:
+                LOGGER.info("There are no new commits, skipping repository...")
                 return []
             break
 
@@ -181,6 +184,9 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], previous_upd
         files = [os.path.join(clone_dir, f) for f in os.listdir(clone_dir) if re.match(pattern, f)]
     else:
         files = glob.glob(os.path.join(clone_dir, '*.yar*'))
+
+    if not files:
+        LOGGER.warning(f"Could not find any yara file matching pattern: {pattern or '*.yar*'}")
 
     return files
 

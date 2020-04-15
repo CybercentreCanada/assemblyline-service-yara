@@ -334,7 +334,7 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
     user = update_config['api_user']
     api_key = update_config['api_key']
     al_client = get_client(server, apikey=(user, api_key), verify=False)
-    yara_importer = YaraImporter(updater_type, al_client)
+    yara_importer = YaraImporter(updater_type, al_client, logger=logger)
 
     # Validating and importing the different signatures
     for base_file in files_sha256:

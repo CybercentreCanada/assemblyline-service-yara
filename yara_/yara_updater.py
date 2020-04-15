@@ -22,11 +22,7 @@ from assemblyline.common.digests import get_sha256_for_file
 from yara_.yara_importer import YaraImporter
 from yara_.yara_validator import YaraValidator
 
-al_log.init_logging('service_updater')
 classification = forge.get_classification()
-
-LOGGER = logging.getLogger('assemblyline.service_updater')
-
 
 UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', "/tmp/yara_updater_config.yaml")
 UPDATE_OUTPUT_PATH = os.environ.get('UPDATE_OUTPUT_PATH', "/tmp/yara_updater_output")
@@ -35,7 +31,7 @@ UPDATE_DIR = os.path.join(tempfile.gettempdir(), 'yara_updates')
 YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
 
 
-def _compile_rules(rules_file, externals):
+def _compile_rules(rules_file, externals, logger):
     """
     Saves Yara rule content to file, validates the content with Yara Validator, and uses Yara python to compile
     the rule set.
@@ -47,7 +43,7 @@ def _compile_rules(rules_file, externals):
         Compiled rules, compiled rules md5.
     """
     try:
-        validate = YaraValidator(externals=externals, logger=LOGGER)
+        validate = YaraValidator(externals=externals, logger=logger)
         validate.validate_rules(rules_file)
     except Exception as e:
         raise e
@@ -71,7 +67,7 @@ def guess_category(rule_file_name):
     return None
 
 
-def url_download(download_directory: str, source: Dict[str, Any], previous_update=None) -> Optional[str]:
+def url_download(download_directory: str, source: Dict[str, Any], logger, previous_update=None) -> Optional[str]:
     """
 
     :param download_directory:
@@ -108,7 +104,7 @@ def url_download(download_directory: str, source: Dict[str, Any], previous_updat
             # Compare the last modified time with the last updated time
             if previous_update and last_modified <= previous_update:
                 # File has not been modified since last update, do nothing
-                LOGGER.info("The file has not been modified since last run, skipping...")
+                logger.info("The file has not been modified since last run, skipping...")
                 return
 
         if previous_update:
@@ -123,7 +119,7 @@ def url_download(download_directory: str, source: Dict[str, Any], previous_updat
         # Check the response code
         if response.status_code == requests.codes['not_modified']:
             # File has not been modified since last update, do nothing
-            LOGGER.info("The file has not been modified since last run, skipping...")
+            logger.info("The file has not been modified since last run, skipping...")
             return
         elif response.ok:
             file_name = os.path.basename(f"{name}.yar")  # TODO: make filename as source name with extension .yar
@@ -138,7 +134,7 @@ def url_download(download_directory: str, source: Dict[str, Any], previous_updat
         pass
     except Exception as e:
         # Catch all other types of exceptions such as ConnectionError, ProxyError, etc.
-        LOGGER.info(str(e))
+        logger.info(str(e))
         exit()
         # TODO: Should we exit even if one file fails to download? Or should we continue downloading other files?
     finally:
@@ -146,7 +142,7 @@ def url_download(download_directory: str, source: Dict[str, Any], previous_updat
         session.close()
 
 
-def git_clone_repo(download_directory: str, source: Dict[str, Any], previous_update=None) -> List[str] and List[str]:
+def git_clone_repo(download_directory: str, source: Dict[str, Any], logger, previous_update=None) -> List[str] and List[str]:
     name = source['name']
     url = source['uri']
     pattern = source.get('pattern', None)
@@ -158,7 +154,7 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], previous_upd
     os.makedirs(clone_dir)
 
     if key:
-        LOGGER.info(f"key found for {url}")
+        logger.info(f"key found for {url}")
         # Save the key to a file
         git_ssh_identity_file = os.path.join(tempfile.gettempdir(), 'id_rsa')
         with open(git_ssh_identity_file, 'w') as key_fh:
@@ -176,7 +172,7 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], previous_upd
             previous_update = iso_to_epoch(previous_update)
         for c in repo.iter_commits():
             if c.committed_date < previous_update:
-                LOGGER.info("There are no new commits, skipping repository...")
+                logger.info("There are no new commits, skipping repository...")
                 return []
             break
 
@@ -186,16 +182,16 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], previous_upd
         files = glob.glob(os.path.join(clone_dir, '*.yar*'))
 
     if not files:
-        LOGGER.warning(f"Could not find any yara file matching pattern: {pattern or '*.yar*'}")
+        logger.warning(f"Could not find any yara file matching pattern: {pattern or '*.yar*'}")
 
     return files
 
 
-def replace_include(include, dirname, processed_files: Set[str]):
+def replace_include(include, dirname, processed_files: Set[str], logger):
     include_path = re.match(r"include [\'\"](.{4,})[\'\"]", include).group(1)
     full_include_path = os.path.normpath(os.path.join(dirname, include_path))
     if not os.path.exists(full_include_path):
-        LOGGER.info(f"File doesn't exist: {full_include_path}")
+        logger.info(f"File doesn't exist: {full_include_path}")
         return [], processed_files
 
     temp_lines = ['\n']  # Start with a new line to separate rules
@@ -207,7 +203,7 @@ def replace_include(include, dirname, processed_files: Set[str]):
         for i, line in enumerate(lines):
             if line.startswith("include"):
                 new_dirname = os.path.dirname(full_include_path)
-                lines, processed_files = replace_include(line, new_dirname, processed_files)
+                lines, processed_files = replace_include(line, new_dirname, processed_files, logger)
                 temp_lines.extend(lines)
             else:
                 temp_lines.append(line)
@@ -218,7 +214,7 @@ def replace_include(include, dirname, processed_files: Set[str]):
     return temp_lines, processed_files
 
 
-def yara_update(updater_type, update_config_path, update_output_path, download_directory, externals) -> None:
+def yara_update(updater_type, update_config_path, update_output_path, download_directory, externals, logger) -> None:
     """
     Using an update configuration file as an input, which contains a list of sources, download all the file(s).
     """
@@ -228,7 +224,7 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
         with open(update_config_path, 'r') as yml_fh:
             update_config = yaml.safe_load(yml_fh)
     else:
-        LOGGER.error(f"Update configuration file doesn't exist: {update_config_path}")
+        logger.error(f"Update configuration file doesn't exist: {update_config_path}")
         exit()
 
     # Exit if no update sources given
@@ -254,13 +250,13 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
     for source_name, source in sources.items():
         os.makedirs(os.path.join(updater_working_dir, source_name))
         # 1. Download signatures
-        LOGGER.info(f"Downloading files from: {source['uri']}")
+        logger.info(f"Downloading files from: {source['uri']}")
         uri: str = source['uri']
 
         if uri.endswith('.git'):
-            files = git_clone_repo(download_directory, source, previous_update=previous_update)
+            files = git_clone_repo(download_directory, source, logger, previous_update=previous_update)
         else:
-            files = [url_download(download_directory, source, previous_update=previous_update)]
+            files = [url_download(download_directory, source, logger, previous_update=previous_update)]
 
         processed_files = set()
 
@@ -272,7 +268,7 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
             if file in processed_files:
                 continue
 
-            LOGGER.info(f"Processing file: {file}")
+            logger.info(f"Processing file: {file}")
 
             file_dirname = os.path.dirname(file)
             processed_files.add(os.path.normpath(file))
@@ -282,7 +278,7 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
             temp_lines = []
             for i, f_line in enumerate(f_lines):
                 if f_line.startswith("include"):
-                    lines, processed_files = replace_include(f_line, file_dirname, processed_files)
+                    lines, processed_files = replace_include(f_line, file_dirname, processed_files, logger)
                     temp_lines.extend(lines)
                 else:
                     temp_lines.append(f_line)
@@ -325,14 +321,14 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
                 files_default_classification[cache_name] = source.get('default_classification',
                                                                       classification.UNRESTRICTED)
             else:
-                LOGGER.info(f'File {cache_name} has not changed since last run. Skipping it...')
+                logger.info(f'File {cache_name} has not changed since last run. Skipping it...')
 
     if not files_sha256:
-        LOGGER.info(f'No new {updater_type.upper()} rules files to process')
+        logger.info(f'No new {updater_type.upper()} rules files to process')
         shutil.rmtree(update_output_path, ignore_errors=True)
         exit()
 
-    LOGGER.info(f"{updater_type.upper()} rules file(s) successfully downloaded")
+    logger.info(f"{updater_type.upper()} rules file(s) successfully downloaded")
 
     server = update_config['ui_server']
     user = update_config['api_user']
@@ -342,20 +338,20 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
 
     # Validating and importing the different signatures
     for base_file in files_sha256:
-        LOGGER.info(f"Validating output file: {base_file}")
+        logger.info(f"Validating output file: {base_file}")
         cur_file = os.path.join(updater_working_dir, base_file)
         source_name = os.path.splitext(os.path.basename(cur_file))[0]
         default_classification = files_default_classification.get(base_file, classification.UNRESTRICTED)
 
         try:
-            _compile_rules(cur_file, externals)
+            _compile_rules(cur_file, externals, logger)
             yara_importer.import_file(cur_file, source_name, default_classification=default_classification)
         except Exception as e:
             raise e
 
     # Check if new signatures have been added
     if al_client.signature.update_available(since=previous_update or '', sig_type=updater_type)['update_available']:
-        LOGGER.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
+        logger.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
 
         if not os.path.exists(update_output_path):
             os.makedirs(update_output_path)
@@ -374,6 +370,10 @@ def yara_update(updater_type, update_config_path, update_output_path, download_d
         with open(os.path.join(update_output_path, 'response.yaml'), 'w') as yml_fh:
             yaml.safe_dump(dict(hash=json.dumps(files_sha256)), yml_fh)
 
+        logger.info(f"{updater_type.upper()} updater completed successfully!")
+
 
 if __name__ == '__main__':
-    yara_update("yara", UPDATE_CONFIGURATION_PATH, UPDATE_OUTPUT_PATH, UPDATE_DIR, YARA_EXTERNALS)
+    al_log.init_logging('updater.yara')
+    logger = logging.getLogger('assemblyline.updater.yara')
+    yara_update("yara", UPDATE_CONFIGURATION_PATH, UPDATE_OUTPUT_PATH, UPDATE_DIR, YARA_EXTERNALS, logger)

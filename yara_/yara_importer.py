@@ -35,7 +35,7 @@ class YaraImporter(object):
 
             for meta in signature.get('metadata', {}):
                 for k, v in meta.items():
-                    if k in ["classification"]:
+                    if k in ["classification", "sharing"]:
                         classification = v
                     elif k in ['id', 'rule_id', 'signature_id']:
                         signature_id = v

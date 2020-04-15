@@ -7,9 +7,9 @@ service = sys.argv[1]
 SERVICE_MANIFEST = f"../{service}/service_manifest.yml"
 UPDATE_CONFIG = f"/tmp/{service.replace('_', '')}_updater_config.yaml"
 
-USER = os.environ.get("USER", None)
-API_KEY = os.environ.get("API_KEY", None)
-SERVER = os.environ.get("SERVER", None)
+USER = os.environ.get("API_USER", "admin")
+API_KEY = os.environ.get("API_KEY", "devkey:admin")
+SERVER = os.environ.get("SERVER", "https://localhost")
 PREVIOUS_UPDATE = os.environ.get("PREVIOUS_UPDATE", "1970-01-01T00:00:00.000Z")
 PREVIOUS_HASH = os.environ.get("PREVIOUS_HASH", None)
 

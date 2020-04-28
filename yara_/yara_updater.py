@@ -151,6 +151,8 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
         cur_logger.info(f"key found for {url}")
         # Save the key to a file
         git_ssh_identity_file = os.path.join(tempfile.gettempdir(), 'id_rsa')
+        if os.path.exists(git_ssh_identity_file):
+            os.unlink(git_ssh_identity_file)
         with open(git_ssh_identity_file, 'w') as key_fh:
             key_fh.write(key)
         os.chmod(git_ssh_identity_file, 0o0400)
@@ -171,7 +173,9 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
             break
 
     if pattern:
-        files = [os.path.join(clone_dir, f) for f in os.listdir(clone_dir) if re.match(pattern, f)]
+        files = [os.path.join(dp, f)
+                 for dp, dn, filenames in os.walk(clone_dir)
+                 for f in filenames if re.match(pattern, f)]
     else:
         files = glob.glob(os.path.join(clone_dir, '*.yar*'))
 

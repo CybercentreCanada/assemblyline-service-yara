@@ -34,7 +34,7 @@ class YaraMetadata(object):
         self.malware_type = meta.get('malware_type', None)
         self.version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
         self.description = meta.get('description', None)
-        self.classification = meta.get('classification', Classification.UNRESTRICTED)
+        self.classification = meta.get('classification', meta.get('sharing', Classification.UNRESTRICTED))
         self.source = meta.get('source', meta.get('organisation', None))
         self.summary = meta.get('summary', meta.get('behavior', None))
         self.author = meta.get('author', meta.get('poc', None))
@@ -42,8 +42,7 @@ class YaraMetadata(object):
         self.al_status = meta.get(self.status, meta.get('al_status', 'DEPLOYED'))
         self.actor_type = meta.get('actor_type', meta.get('ta_type', meta.get('family', None)))
         self.mitre_att = meta.get('mitre_att', meta.get("attack_id", None))
-        self.mitre_group = meta.get('mitre_group', None)
-        self.actor = meta.get('used_by', meta.get('actor', meta.get('threat_actor', None)))
+        self.actor = meta.get('used_by', meta.get('actor', meta.get('threat_actor', meta.get('mitre_group', None))))
         self.exploit = meta.get('exploit', None)
         self.al_tag = meta.get('al_tag', None)
 
@@ -278,12 +277,11 @@ class Yara(ServiceBase):
         section.title_text = title
 
         json_body = dict(
-            namespace=match.namespace,
             name=match.rule,
         )
 
         for item in ['id', 'version', 'author', 'description', 'source', 'malware', 'info',
-                     'technique', 'tool', 'exploit', 'actor', 'exploit', 'category']:
+                     'technique', 'tool', 'exploit', 'actor', 'category', 'mitre_att']:
             val = almeta.__dict__.get(item, None)
             if val:
                 json_body[item] = val

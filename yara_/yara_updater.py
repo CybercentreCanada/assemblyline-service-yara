@@ -214,159 +214,163 @@ def yara_update(updater_type, update_config_path, update_output_path,
     """
     Using an update configuration file as an input, which contains a list of sources, download all the file(s).
     """
-    # Load updater configuration
-    update_config = {}
-    if update_config_path and os.path.exists(update_config_path):
-        with open(update_config_path, 'r') as yml_fh:
-            update_config = yaml.safe_load(yml_fh)
-    else:
-        cur_logger.error(f"Update configuration file doesn't exist: {update_config_path}")
-        exit()
-
-    # Exit if no update sources given
-    if 'sources' not in update_config.keys() or not update_config['sources']:
-        exit()
-
-    # Parse updater configuration
-    previous_update = update_config.get('previous_update', None)
-    previous_hash = update_config.get('previous_hash', None) or {}
-    if previous_hash:
-        previous_hash = json.loads(previous_hash)
-    sources = {source['name']: source for source in update_config['sources']}
-    files_sha256 = {}
-    files_default_classification = {}
-
-    # Create working directory
-    updater_working_dir = os.path.join(tempfile.gettempdir(), 'updater_working_dir')
-    if os.path.exists(updater_working_dir):
-        shutil.rmtree(updater_working_dir)
-    os.makedirs(updater_working_dir)
-
-    # Go through each source and download file
-    for source_name, source in sources.items():
-        os.makedirs(os.path.join(updater_working_dir, source_name))
-        # 1. Download signatures
-        cur_logger.info(f"Downloading files from: {source['uri']}")
-        uri: str = source['uri']
-
-        if uri.endswith('.git'):
-            files = git_clone_repo(download_directory, source, cur_logger, previous_update=previous_update)
+    # noinspection PyBroadException
+    try:
+        # Load updater configuration
+        update_config = {}
+        if update_config_path and os.path.exists(update_config_path):
+            with open(update_config_path, 'r') as yml_fh:
+                update_config = yaml.safe_load(yml_fh)
         else:
-            files = [url_download(download_directory, source, cur_logger, previous_update=previous_update)]
+            cur_logger.error(f"Update configuration file doesn't exist: {update_config_path}")
+            exit()
 
-        processed_files = set()
+        # Exit if no update sources given
+        if 'sources' not in update_config.keys() or not update_config['sources']:
+            exit()
 
-        # 2. Aggregate files
-        file_name = os.path.join(updater_working_dir, f"{source_name}.yar")
-        mode = "w"
-        for file in files:
-            # File has already been processed before, skip it to avoid duplication of rules
-            if file in processed_files:
-                continue
+        # Parse updater configuration
+        previous_update = update_config.get('previous_update', None)
+        previous_hash = update_config.get('previous_hash', None) or {}
+        if previous_hash:
+            previous_hash = json.loads(previous_hash)
+        sources = {source['name']: source for source in update_config['sources']}
+        files_sha256 = {}
+        files_default_classification = {}
 
-            cur_logger.info(f"Processing file: {file}")
+        # Create working directory
+        updater_working_dir = os.path.join(tempfile.gettempdir(), 'updater_working_dir')
+        if os.path.exists(updater_working_dir):
+            shutil.rmtree(updater_working_dir)
+        os.makedirs(updater_working_dir)
 
-            file_dirname = os.path.dirname(file)
-            processed_files.add(os.path.normpath(file))
-            with open(file, 'r') as f:
-                f_lines = f.readlines()
+        # Go through each source and download file
+        for source_name, source in sources.items():
+            os.makedirs(os.path.join(updater_working_dir, source_name))
+            # 1. Download signatures
+            cur_logger.info(f"Downloading files from: {source['uri']}")
+            uri: str = source['uri']
 
-            temp_lines = []
-            for i, f_line in enumerate(f_lines):
-                if f_line.startswith("include"):
-                    lines, processed_files = replace_include(f_line, file_dirname, processed_files, cur_logger)
-                    temp_lines.extend(lines)
-                else:
-                    temp_lines.append(f_line)
-
-            # guess the type of files that we have in the current file
-            guessed_category = guess_category(file)
-            parser = Plyara()
-            signatures = parser.parse_string("\n".join(temp_lines))
-
-            # Ignore "cuckoo" rules
-            if "cuckoo" in parser.imports:
-                parser.imports.remove("cuckoo")
-
-            # Guess category
-            if guessed_category:
-                for s in signatures:
-                    if 'metadata' not in s:
-                        s['metadata'] = []
-                    s['metadata'].append({'category': guessed_category})
-
-            # Save all rules from source into single file
-            with open(file_name, mode) as f:
-                for s in signatures:
-                    # Fix imports and remove cuckoo
-                    s['imports'] = utils.detect_imports(s)
-                    if "cuckoo" in s['imports']:
-                        s['imports'].remove('cuckoo')
-
-                    f.write(utils.rebuild_yara_rule(s))
-
-            if mode == "w":
-                mode = "a"
-
-        # Check if the file is the same as the last run
-        if os.path.exists(file_name):
-            cache_name = os.path.basename(file_name)
-            sha256 = get_sha256_for_file(file_name)
-            if sha256 != previous_hash.get(cache_name, None):
-                files_sha256[cache_name] = sha256
-                files_default_classification[cache_name] = source.get('default_classification',
-                                                                      classification.UNRESTRICTED)
+            if uri.endswith('.git'):
+                files = git_clone_repo(download_directory, source, cur_logger, previous_update=previous_update)
             else:
-                cur_logger.info(f'File {cache_name} has not changed since last run. Skipping it...')
+                files = [url_download(download_directory, source, cur_logger, previous_update=previous_update)]
 
-    if not files_sha256:
-        cur_logger.info(f'No new {updater_type.upper()} rules files to process')
-        shutil.rmtree(update_output_path, ignore_errors=True)
-        exit()
+            processed_files = set()
 
-    cur_logger.info(f"{updater_type.upper()} rules file(s) successfully downloaded")
+            # 2. Aggregate files
+            file_name = os.path.join(updater_working_dir, f"{source_name}.yar")
+            mode = "w"
+            for file in files:
+                # File has already been processed before, skip it to avoid duplication of rules
+                if file in processed_files:
+                    continue
 
-    server = update_config['ui_server']
-    user = update_config['api_user']
-    api_key = update_config['api_key']
-    al_client = get_client(server, apikey=(user, api_key), verify=False)
-    yara_importer = YaraImporter(updater_type, al_client, logger=cur_logger)
+                cur_logger.info(f"Processing file: {file}")
 
-    # Validating and importing the different signatures
-    for base_file in files_sha256:
-        cur_logger.info(f"Validating output file: {base_file}")
-        cur_file = os.path.join(updater_working_dir, base_file)
-        source_name = os.path.splitext(os.path.basename(cur_file))[0]
-        default_classification = files_default_classification.get(base_file, classification.UNRESTRICTED)
+                file_dirname = os.path.dirname(file)
+                processed_files.add(os.path.normpath(file))
+                with open(file, 'r') as f:
+                    f_lines = f.readlines()
 
-        try:
-            _compile_rules(cur_file, externals, cur_logger)
-            yara_importer.import_file(cur_file, source_name, default_classification=default_classification)
-        except Exception as e:
-            raise e
+                temp_lines = []
+                for i, f_line in enumerate(f_lines):
+                    if f_line.startswith("include"):
+                        lines, processed_files = replace_include(f_line, file_dirname, processed_files, cur_logger)
+                        temp_lines.extend(lines)
+                    else:
+                        temp_lines.append(f_line)
 
-    # Check if new signatures have been added
-    if al_client.signature.update_available(since=previous_update or '', sig_type=updater_type)['update_available']:
-        cur_logger.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
+                # guess the type of files that we have in the current file
+                guessed_category = guess_category(file)
+                parser = Plyara()
+                signatures = parser.parse_string("\n".join(temp_lines))
 
-        if not os.path.exists(update_output_path):
-            os.makedirs(update_output_path)
+                # Ignore "cuckoo" rules
+                if "cuckoo" in parser.imports:
+                    parser.imports.remove("cuckoo")
 
-        temp_zip_file = os.path.join(update_output_path, 'temp.zip')
-        al_client.signature.download(output=temp_zip_file,
-                                     query=f"type:{updater_type} AND (status:NOISY OR status:DEPLOYED)")
+                # Guess category
+                if guessed_category:
+                    for s in signatures:
+                        if 'metadata' not in s:
+                            s['metadata'] = []
+                        s['metadata'].append({'category': guessed_category})
 
-        if os.path.exists(temp_zip_file):
-            with ZipFile(temp_zip_file, 'r') as zip_f:
-                zip_f.extractall(update_output_path)
+                # Save all rules from source into single file
+                with open(file_name, mode) as f:
+                    for s in signatures:
+                        # Fix imports and remove cuckoo
+                        s['imports'] = utils.detect_imports(s)
+                        if "cuckoo" in s['imports']:
+                            s['imports'].remove('cuckoo')
 
-            os.remove(temp_zip_file)
+                        f.write(utils.rebuild_yara_rule(s))
 
-        # Create the response yaml
-        with open(os.path.join(update_output_path, 'response.yaml'), 'w') as yml_fh:
-            yaml.safe_dump(dict(hash=json.dumps(files_sha256)), yml_fh)
+                if mode == "w":
+                    mode = "a"
 
-        cur_logger.info(f"{updater_type.upper()} updater completed successfully!")
+            # Check if the file is the same as the last run
+            if os.path.exists(file_name):
+                cache_name = os.path.basename(file_name)
+                sha256 = get_sha256_for_file(file_name)
+                if sha256 != previous_hash.get(cache_name, None):
+                    files_sha256[cache_name] = sha256
+                    files_default_classification[cache_name] = source.get('default_classification',
+                                                                          classification.UNRESTRICTED)
+                else:
+                    cur_logger.info(f'File {cache_name} has not changed since last run. Skipping it...')
+
+        if not files_sha256:
+            cur_logger.info(f'No new {updater_type.upper()} rules files to process')
+            shutil.rmtree(update_output_path, ignore_errors=True)
+            exit()
+
+        cur_logger.info(f"{updater_type.upper()} rules file(s) successfully downloaded")
+
+        server = update_config['ui_server']
+        user = update_config['api_user']
+        api_key = update_config['api_key']
+        al_client = get_client(server, apikey=(user, api_key), verify=False)
+        yara_importer = YaraImporter(updater_type, al_client, logger=cur_logger)
+
+        # Validating and importing the different signatures
+        for base_file in files_sha256:
+            cur_logger.info(f"Validating output file: {base_file}")
+            cur_file = os.path.join(updater_working_dir, base_file)
+            source_name = os.path.splitext(os.path.basename(cur_file))[0]
+            default_classification = files_default_classification.get(base_file, classification.UNRESTRICTED)
+
+            try:
+                _compile_rules(cur_file, externals, cur_logger)
+                yara_importer.import_file(cur_file, source_name, default_classification=default_classification)
+            except Exception as e:
+                raise e
+
+        # Check if new signatures have been added
+        if al_client.signature.update_available(since=previous_update or '', sig_type=updater_type)['update_available']:
+            cur_logger.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
+
+            if not os.path.exists(update_output_path):
+                os.makedirs(update_output_path)
+
+            temp_zip_file = os.path.join(update_output_path, 'temp.zip')
+            al_client.signature.download(output=temp_zip_file,
+                                         query=f"type:{updater_type} AND (status:NOISY OR status:DEPLOYED)")
+
+            if os.path.exists(temp_zip_file):
+                with ZipFile(temp_zip_file, 'r') as zip_f:
+                    zip_f.extractall(update_output_path)
+
+                os.remove(temp_zip_file)
+
+            # Create the response yaml
+            with open(os.path.join(update_output_path, 'response.yaml'), 'w') as yml_fh:
+                yaml.safe_dump(dict(hash=json.dumps(files_sha256)), yml_fh)
+
+            cur_logger.info(f"{updater_type.upper()} updater completed successfully!")
+    except Exception:
+        cur_logger.exception("Updater ended with an exception!")
 
 
 if __name__ == '__main__':

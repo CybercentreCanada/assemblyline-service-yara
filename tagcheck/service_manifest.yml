@@ -126,7 +126,7 @@ update_config:
     command: ["python", "-m", "tagcheck.tagcheck_updater"]
     image: ${REGISTRY}cccs/assemblyline-service-tagcheck:latest
   sources:
-    - name: cccs
+    - name: CCCS
       uri: https://assemblyline-support.s3.amazonaws.com/tagcheck.rules
   update_interval_seconds: 86400  # 24 hours
   wait_for_update: true

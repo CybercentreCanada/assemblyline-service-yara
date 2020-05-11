@@ -60,21 +60,22 @@ class YaraImporter(object):
 
             # Fix imports and remove cuckoo
             signature['imports'] = utils.detect_imports(signature)
-            if "cuckoo" in signature['imports']:
-                signature['imports'].remove('cuckoo')
+            if "cuckoo" not in signature['imports']:
+                sig = Signature(dict(
+                    classification=classification,
+                    data=utils.rebuild_yara_rule(signature),
+                    name=signature.get('rule_name'),
+                    order=order,
+                    revision=int(float(version)),
+                    signature_id=signature_id or signature.get('rule_name'),
+                    source=source,
+                    status=status,
+                    type=self.importer_type,
+                ))
+                upload_list.append(sig.as_primitives())
+            else:
+                self.log.warning(f"Signature '{signature.get('rule_name')}' skipped because it uses cuckoo module.")
 
-            sig = Signature(dict(
-                classification=classification,
-                data=utils.rebuild_yara_rule(signature),
-                name=signature.get('rule_name'),
-                order=order,
-                revision=int(float(version)),
-                signature_id=signature_id or signature.get('rule_name'),
-                source=source,
-                status=status,
-                type=self.importer_type,
-            ))
-            upload_list.append(sig.as_primitives())
             order += 1
 
         r = self.update_client.signature.add_update_many(source, self.importer_type, upload_list)

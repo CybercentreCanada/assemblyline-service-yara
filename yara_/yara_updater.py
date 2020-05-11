@@ -231,9 +231,7 @@ def yara_update(updater_type, update_config_path, update_output_path,
 
         # Parse updater configuration
         previous_update = update_config.get('previous_update', None)
-        previous_hash = update_config.get('previous_hash', None) or {}
-        if previous_hash:
-            previous_hash = json.loads(previous_hash)
+        previous_hash = json.loads(update_config.get('previous_hash', None) or "{}")
         sources = {source['name']: source for source in update_config['sources']}
         files_sha256 = {}
         files_default_classification = {}
@@ -295,7 +293,14 @@ def yara_update(updater_type, update_config_path, update_output_path,
                     for s in signatures:
                         if 'metadata' not in s:
                             s['metadata'] = []
+
+                        # Do not override category with guessed category if it already exists
+                        for meta in s['metadata']:
+                            if 'category' in meta:
+                                continue
+
                         s['metadata'].append({'category': guessed_category})
+                        s['metadata'].append({guessed_category: s.get('rule_name')})
 
                 # Save all rules from source into single file
                 with open(file_name, mode) as f:

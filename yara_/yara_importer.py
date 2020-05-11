@@ -25,6 +25,10 @@ class YaraImporter(object):
         self.log = logger
 
     def _save_signatures(self, signatures, source, default_status=DEFAULT_STATUS, default_classification=None):
+        if len(signatures) == 0:
+            self.log.info(f"There are no signatures for {source}, skipping...")
+            return False
+
         order = 1
         upload_list = []
         for signature in signatures:

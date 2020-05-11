@@ -130,37 +130,37 @@ update_config:
     image: ${REGISTRY}cccs/assemblyline-service-yara:latest
   sources:
     - name: antidebug
-      pattern: .*antidebug_antivm_index.yar$
+      pattern: ^antidebug_antivm_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
     - name: capabilities
-      pattern: .*capabilities_index.yar$
+      pattern: ^capabilities_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
     - name: crypto
-      pattern: .*crypto_index.yar$
+      pattern: ^crypto_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
     - name: cve
-      pattern: .*cve_rules_index.yar$
+      pattern: ^cve_rules_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
     - name: email
-      pattern: .*email_index.yar$
+      pattern: ^email_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
     - name: exploit_kits
-      pattern: .*exploit_kits_index.yar$
+      pattern: ^exploit_kits_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
     - name: maldocs
-      pattern: .*maldocs_index.yar$
+      pattern: ^maldocs_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
     - name: malware
-      pattern: .*malware_index.yar$
+      pattern: ^malware_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
     - name: mobile_malware
-      pattern: .*mobile_malware_index.yar$
+      pattern: ^mobile_malware_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
     - name: packers
-      pattern: .*packers_index.yar$
+      pattern: ^packers_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
     - name: webshells
-      pattern: .*webshells_index.yar$
+      pattern: ^webshells_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
   update_interval_seconds: 86400  # 24 hours
   wait_for_update: true

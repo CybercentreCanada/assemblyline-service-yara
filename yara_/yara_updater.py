@@ -302,10 +302,8 @@ def yara_update(updater_type, update_config_path, update_output_path,
                     for s in signatures:
                         # Fix imports and remove cuckoo
                         s['imports'] = utils.detect_imports(s)
-                        if "cuckoo" in s['imports']:
-                            s['imports'].remove('cuckoo')
-
-                        f.write(utils.rebuild_yara_rule(s))
+                        if "cuckoo" not in s['imports']:
+                            f.write(utils.rebuild_yara_rule(s))
 
                 if mode == "w":
                     mode = "a"

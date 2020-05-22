@@ -227,7 +227,16 @@ def yara_update(updater_type, update_config_path, update_output_path,
 
         # Exit if no update sources given
         if 'sources' not in update_config.keys() or not update_config['sources']:
+            cur_logger.error(f"Update configuration does not contain any source to update from")
             exit()
+
+        # Initialise al_client
+        server = update_config['ui_server']
+        user = update_config['api_user']
+        api_key = update_config['api_key']
+        cur_logger.info(f"Connecting to Assemblyline API: {server}...")
+        al_client = get_client(server, apikey=(user, api_key), verify=False)
+        cur_logger.info(f"Connected!")
 
         # Parse updater configuration
         previous_update = update_config.get('previous_update', None)
@@ -324,35 +333,29 @@ def yara_update(updater_type, update_config_path, update_output_path,
                 else:
                     cur_logger.info(f'File {cache_name} has not changed since last run. Skipping it...')
 
-        if not files_sha256:
-            cur_logger.info(f'No new {updater_type.upper()} rules files to process')
-            shutil.rmtree(update_output_path, ignore_errors=True)
-            exit()
+        if files_sha256:
+            cur_logger.info(f"Found new {updater_type.upper()} rules files to process!")
 
-        cur_logger.info(f"{updater_type.upper()} rules file(s) successfully downloaded")
+            yara_importer = YaraImporter(updater_type, al_client, logger=cur_logger)
 
-        server = update_config['ui_server']
-        user = update_config['api_user']
-        api_key = update_config['api_key']
-        al_client = get_client(server, apikey=(user, api_key), verify=False)
-        yara_importer = YaraImporter(updater_type, al_client, logger=cur_logger)
+            # Validating and importing the different signatures
+            for base_file in files_sha256:
+                cur_logger.info(f"Validating output file: {base_file}")
+                cur_file = os.path.join(updater_working_dir, base_file)
+                source_name = os.path.splitext(os.path.basename(cur_file))[0]
+                default_classification = files_default_classification.get(base_file, classification.UNRESTRICTED)
 
-        # Validating and importing the different signatures
-        for base_file in files_sha256:
-            cur_logger.info(f"Validating output file: {base_file}")
-            cur_file = os.path.join(updater_working_dir, base_file)
-            source_name = os.path.splitext(os.path.basename(cur_file))[0]
-            default_classification = files_default_classification.get(base_file, classification.UNRESTRICTED)
-
-            try:
-                _compile_rules(cur_file, externals, cur_logger)
-                yara_importer.import_file(cur_file, source_name, default_classification=default_classification)
-            except Exception as e:
-                raise e
+                try:
+                    _compile_rules(cur_file, externals, cur_logger)
+                    yara_importer.import_file(cur_file, source_name, default_classification=default_classification)
+                except Exception as e:
+                    raise e
+        else:
+            cur_logger.info(f'No new {updater_type.upper()} rules files to process...')
 
         # Check if new signatures have been added
         if al_client.signature.update_available(since=previous_update or '', sig_type=updater_type)['update_available']:
-            cur_logger.info("AN UPDATE IS AVAILABLE TO DOWNLOAD")
+            cur_logger.info("An update is available for download from the datastore")
 
             if not os.path.exists(update_output_path):
                 os.makedirs(update_output_path)
@@ -371,7 +374,9 @@ def yara_update(updater_type, update_config_path, update_output_path,
             with open(os.path.join(update_output_path, 'response.yaml'), 'w') as yml_fh:
                 yaml.safe_dump(dict(hash=json.dumps(files_sha256)), yml_fh)
 
-            cur_logger.info(f"{updater_type.upper()} updater completed successfully!")
+            cur_logger.info(f"New ruleset successfully downloaded and ready to use")
+
+        cur_logger.info(f"{updater_type.upper()} updater completed successfully")
     except Exception:
         cur_logger.exception("Updater ended with an exception!")
 

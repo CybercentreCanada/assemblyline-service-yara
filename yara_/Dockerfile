@@ -55,6 +55,9 @@ RUN rm yara_/Dockerfile
 # Set owner
 RUN chown -R assemblyline /opt/al_service
 
+# Patch version in manifest
+ARG version=4.0.0.dev1
+RUN sed -i -e "s/\$SERVICE_TAG/$version/g" service_manifest.yml
+
 # Switch to assemblyline user
 USER assemblyline
-

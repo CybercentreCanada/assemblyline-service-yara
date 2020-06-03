@@ -1,5 +1,5 @@
 name: YARA
-version: 1
+version: $SERVICE_TAG
 description: >-
   This services runs all DEPLOYED and NOISY signatures on submitted files. NOISY rules
   are reported but do not influence the score. DEPLOYED rules score according to their
@@ -117,7 +117,7 @@ heuristics:
     description: Yara rule - Threat level 10
 
 docker_config:
-  image: ${REGISTRY}cccs/assemblyline-service-yara:latest
+  image: ${REGISTRY}cccs/assemblyline-service-yara:$SERVICE_TAG
   cpu_cores: 1.0
   ram_mb: 768
 
@@ -127,7 +127,7 @@ update_config:
   run_options:
     allow_internet_access: true
     command: ["python", "-m", "yara_.yara_updater"]
-    image: ${REGISTRY}cccs/assemblyline-service-yara:latest
+    image: ${REGISTRY}cccs/assemblyline-service-yara:$SERVICE_TAG
   sources:
     - name: antidebug
       pattern: ^antidebug_antivm_index.yar$

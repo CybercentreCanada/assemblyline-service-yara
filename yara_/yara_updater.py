@@ -136,11 +136,18 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
 
 
 def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
-                   previous_update=None) -> List[str] and List[str]:
+                   previous_update=None, branch=None) -> List[str] and List[str]:
     name = source['name']
     url = source['uri']
     pattern = source.get('pattern', None)
     key = source.get('private_key', None)
+    username = source.get('username', None)
+    password = source.get('password', None)
+    auth = f'{username}:{password}@' if username and password else None
+    git_options = ['--single-branch']
+    if branch:
+        git_options.append(f'--branch {branch}')
+    repo = None
 
     clone_dir = os.path.join(download_directory, name)
     if os.path.exists(clone_dir):
@@ -158,9 +165,17 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
         os.chmod(git_ssh_identity_file, 0o0400)
 
         git_ssh_cmd = f"ssh -oStrictHostKeyChecking=no -i {git_ssh_identity_file}"
-        repo = Repo.clone_from(url, clone_dir, env={"GIT_SSH_COMMAND": git_ssh_cmd})
+        repo = Repo.clone_from(url, clone_dir, env={"GIT_SSH_COMMAND": git_ssh_cmd}, multi_options=git_options)
     else:
-        repo = Repo.clone_from(url, clone_dir)
+        if auth:
+            cur_logger.info(f"cloning {url} with authentication")
+            url = re.sub(r'^(?P<scheme>https?://)', fr'\g<scheme>{auth}', url)
+        else:
+            cur_logger.info(f"cloning {url}")
+        repo = Repo.clone_from(url, clone_dir, multi_options=git_options)
+    if not isinstance(repo, Repo):
+        cur_logger.warning(f"Could not clone repository")
+        return []
 
     # Check repo last commit
     if previous_update:

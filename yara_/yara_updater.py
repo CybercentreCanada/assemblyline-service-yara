@@ -77,18 +77,26 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
     username = source.get('username', None)
     password = source.get('password', None)
     auth = (username, password) if username and password else None
-
+    key = source.get('private_key', None)
     headers = source.get('headers', None)
 
     # Create a requests session
     session = requests.Session()
+    key_file = None
+    if key is not None:
+        key_type = 'x509.pem'
+        key_file = os.path.join(tempfile.gettempdir(), key_type)
+        if os.path.exists(key_file):
+            os.unlink(key_file)
+        with open(key_file, 'w') as key_fh:
+            key_fh.write(key)
 
     try:
         if isinstance(previous_update, str):
             previous_update = iso_to_epoch(previous_update)
 
         # Check the response header for the last modified date
-        response = session.head(uri, auth=auth, headers=headers)
+        response = session.head(uri, auth=auth, headers=headers, verify=key_file)
         last_modified = response.headers.get('Last-Modified', None)
         if last_modified:
             # Convert the last modified time to epoch
@@ -107,7 +115,7 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
             else:
                 headers = {'If-Modified-Since': previous_update}
 
-        response = session.get(uri, auth=auth, headers=headers)
+        response = session.get(uri, auth=auth, headers=headers, verify=key_file)
 
         # Check the response code
         if response.status_code == requests.codes['not_modified']:
@@ -154,17 +162,25 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
         shutil.rmtree(clone_dir)
     os.makedirs(clone_dir)
 
+    key_type = None
+    key_file = None
     if key:
-        cur_logger.info(f"key found for {url}")
         # Save the key to a file
-        git_ssh_identity_file = os.path.join(tempfile.gettempdir(), 'id_rsa')
-        if os.path.exists(git_ssh_identity_file):
-            os.unlink(git_ssh_identity_file)
-        with open(git_ssh_identity_file, 'w') as key_fh:
+        if key.replace('-----BEGIN CERTIFICATE-----', '').strip().startswith('MII'):
+            key_type = 'x509.pem'
+        else:
+            key_type = 'id_rsa'
+        key_file = os.path.join(tempfile.gettempdir(), key_type)
+        if os.path.exists(key_file):
+            os.unlink(key_file)
+        with open(key_file, 'w') as key_fh:
             key_fh.write(key)
-        os.chmod(git_ssh_identity_file, 0o0400)
+        if key_type == 'id_rsa':
+            os.chmod(key_file, 0o0400)
 
-        git_ssh_cmd = f"ssh -oStrictHostKeyChecking=no -i {git_ssh_identity_file}"
+    if key_type == 'id_rsa' and key_file is not None:
+        cur_logger.info(f"RSA key found for {url}")
+        git_ssh_cmd = f"ssh -oStrictHostKeyChecking=no -i {key_file}"
         repo = Repo.clone_from(url, clone_dir, env={"GIT_SSH_COMMAND": git_ssh_cmd}, multi_options=git_options)
     else:
         if auth:
@@ -172,6 +188,8 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
             url = re.sub(r'^(?P<scheme>https?://)', fr'\g<scheme>{auth}', url)
         else:
             cur_logger.info(f"cloning {url}")
+        if key_file is not None:
+            git_options.append(f'--config http.sslCAInfo={key_file}')
         repo = Repo.clone_from(url, clone_dir, multi_options=git_options)
     if not isinstance(repo, Repo):
         cur_logger.warning(f"Could not clone repository")

@@ -1,5 +1,6 @@
 FROM cccs/assemblyline-v4-service-base:latest AS base
 ENV SERVICE_PATH yara_.yara_.Yara
+ENV YARA_VERSION='4.0.2'
 
 # Install runtime libraries we will need later
 USER root
@@ -11,9 +12,9 @@ FROM base AS build
 RUN apt-get update && apt-get install -y git libssl-dev libmagic-dev automake libtool make gcc wget  && rm -rf /var/lib/apt/lists/*
 
 # Compile and install YARA
-RUN wget -O /tmp/yara.tar.gz https://github.com/VirusTotal/yara/archive/v3.11.0.tar.gz
+RUN wget -O /tmp/yara.tar.gz https://github.com/VirusTotal/yara/archive/v${YARA_VERSION}.tar.gz
 RUN tar -zxf /tmp/yara.tar.gz -C /tmp
-WORKDIR /tmp/yara-3.11.0
+WORKDIR /tmp/yara-${YARA_VERSION}
 RUN ./bootstrap.sh
 RUN ./configure --enable-magic --enable-dotnet --with-crypto --prefix /tmp/yara_install
 RUN make
@@ -22,7 +23,7 @@ RUN make install
 # Build the yara python plugins
 USER assemblyline
 RUN touch /tmp/before-pip
-RUN pip install --no-cache-dir --user yara-python gitpython plyara && rm -rf ~/.cache/pip
+RUN pip install --no-cache-dir --user yara-python==${YARA_VERSION} gitpython plyara && rm -rf ~/.cache/pip
 
 # Remove files that existed before the pip install so that our copy command below doesn't take a snapshot of
 # files that already exist in the base image

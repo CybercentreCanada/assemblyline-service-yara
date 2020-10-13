@@ -9,6 +9,7 @@ import time
 from typing import List, Dict, Any, Optional, Set
 from zipfile import ZipFile
 
+import certifi
 import requests
 import yaml
 from assemblyline.common import forge
@@ -50,6 +51,13 @@ def _compile_rules(rules_file, externals, cur_logger):
     return True
 
 
+def add_cacert(cert: str):
+    # Add certificate to requests
+    cafile = certifi.where()
+    with open(cafile, 'a') as ca_editor:
+        ca_editor.write(f"\n{cert}")
+
+
 def guess_category(rule_file_name):
     cat_map = {
         "technique": ["antidebug", "antivm", "capabilities"],
@@ -76,12 +84,18 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
     uri = source['uri']
     username = source.get('username', None)
     password = source.get('password', None)
+    ca_cert = source.get('ca_cert', None)
+    ignore_ssl_errors = source.get('ssl_ignore_errors', False)
     auth = (username, password) if username and password else None
 
     headers = source.get('headers', None)
 
+    if ca_cert:
+        add_cacert(ca_cert)
+
     # Create a requests session
     session = requests.Session()
+    session.verify = not ignore_ssl_errors
 
     try:
         if isinstance(previous_update, str):
@@ -141,11 +155,21 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
     url = source['uri']
     pattern = source.get('pattern', None)
     key = source.get('private_key', None)
+    ignore_ssl_errors = source.get("ssl_ignore_errors", False)
+    ca_cert = source.get("ca_cert")
 
     clone_dir = os.path.join(download_directory, name)
     if os.path.exists(clone_dir):
         shutil.rmtree(clone_dir)
     os.makedirs(clone_dir)
+
+    git_env = {}
+    if ignore_ssl_errors:
+        git_env['GIT_SSL_NO_VERIFY'] = 1
+
+    if ca_cert:
+        add_cacert(ca_cert)
+        git_env['GIT_SSL_CAINFO'] = certifi.where()
 
     if key:
         cur_logger.info(f"key found for {url}")
@@ -158,9 +182,9 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
         os.chmod(git_ssh_identity_file, 0o0400)
 
         git_ssh_cmd = f"ssh -oStrictHostKeyChecking=no -i {git_ssh_identity_file}"
-        repo = Repo.clone_from(url, clone_dir, env={"GIT_SSH_COMMAND": git_ssh_cmd})
-    else:
-        repo = Repo.clone_from(url, clone_dir)
+        git_env['GIT_SSH_COMMAND'] = git_ssh_cmd
+
+    repo = Repo.clone_from(url, clone_dir, env=git_env)
 
     # Check repo last commit
     if previous_update:

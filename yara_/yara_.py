@@ -520,7 +520,7 @@ class Yara(ServiceBase):
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
                 # Internal error 30 == exceeded max string matches on rule
-                if e != "internal error: 30":
+                if "internal error: 30" not in str(e):
                     raise
                 else:
                     try:

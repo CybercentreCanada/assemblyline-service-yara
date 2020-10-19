@@ -24,8 +24,9 @@ stages:
     - script: |
         set -xv  # Echo commands before they are run
         export TAG=${BUILD_SOURCEBRANCH#"refs/tags/v"}
-        docker build --build-arg version=$TAG -t cccs/assemblyline-service-yara:$TAG -t cccs/assemblyline-service-yara:latest -f ./yara_/Dockerfile .
-        docker build --build-arg version=$TAG -t cccs/assemblyline-service-tagcheck:$TAG -t cccs/assemblyline-service-tagcheck:latest -f ./tagcheck/Dockerfile .
+        if [[ "$TAG" == *stable* ]]; then export BUILD_TYPE=stable; else export BUILD_TYPE=latest; fi
+        docker build --build-arg version=$TAG -t cccs/assemblyline-service-yara:$TAG -t cccs/assemblyline-service-yara:$BUILD_TYPE -f ./yara_/Dockerfile .
+        docker build --build-arg version=$TAG -t cccs/assemblyline-service-tagcheck:$TAG -t cccs/assemblyline-service-tagcheck:$BUILD_TYPE -f ./tagcheck/Dockerfile .
         docker push cccs/assemblyline-service-yara
         docker push cccs/assemblyline-service-tagcheck
       displayName: Deploy to Docker Hub

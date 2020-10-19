@@ -1,4 +1,5 @@
-FROM cccs/assemblyline-service-yara:latest
+ARG build_type=latest
+FROM cccs/assemblyline-service-yara:${build_type}
 
 # Build the tagcheck container as a variant of the yara container where the additional
 # tagcheck service code has been copied in

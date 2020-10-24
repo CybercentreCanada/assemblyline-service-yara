@@ -401,16 +401,29 @@ def yara_update(updater_type, update_config_path, update_output_path,
             if not os.path.exists(update_output_path):
                 os.makedirs(update_output_path)
 
-            temp_zip_file = os.path.join(update_output_path, 'temp.zip')
-            al_client.signature.download(output=temp_zip_file,
-                                         query=f"type:{updater_type} AND (status:NOISY OR status:DEPLOYED)")
+            extracted_zip = False
+            attempt = 0
 
-            if os.path.exists(temp_zip_file):
-                with ZipFile(temp_zip_file, 'r') as zip_f:
-                    zip_f.extractall(update_output_path)
+            # Sometimes a zip file isn't always returned, will affect service's use of signature source. Patience..
+            while not extracted_zip and attempt < 5:
+                temp_zip_file = os.path.join(update_output_path, 'temp.zip')
+                al_client.signature.download(output=temp_zip_file,
+                                             query=f"type:{updater_type} AND (status:NOISY OR status:DEPLOYED)")
 
-                os.remove(temp_zip_file)
+                if os.path.exists(temp_zip_file):
+                    try:
+                        with ZipFile(temp_zip_file, 'r') as zip_f:
+                            zip_f.extractall(update_output_path)
+                            extracted_zip = True
+                            cur_logger.info("Zip extracted.")
+                    except:
+                        attempt += 1
+                        cur_logger.warning(f"[{attempt}/5] Bad zip. Trying again after 30s...")
+                        time.sleep(30)
 
+                    os.remove(temp_zip_file)
+
+            cur_logger.error("Signatures aren't saved to disk. Check sources..") if attempt == 5 else None
             # Create the response yaml
             with open(os.path.join(update_output_path, 'response.yaml'), 'w') as yml_fh:
                 yaml.safe_dump(dict(hash=json.dumps(files_sha256)), yml_fh)

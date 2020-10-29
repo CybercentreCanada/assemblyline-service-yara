@@ -44,7 +44,15 @@ class YaraImporter(object):
                     elif k in ['id', 'rule_id', 'signature_id']:
                         signature_id = v
                     elif k in ['version', 'rule_version', 'revision']:
-                        version = v
+                        if "." in v:
+                            # Maintain version schema (M.m)
+                            version_split = v.split(".", 1)
+                            major = ''.join(filter(str.isdigit, version_split[0]))
+                            minor = ''.join(filter(str.isdigit, version_split[1]))
+                            version = f"{major}.{minor}"
+                        else:
+                            # Fair to assume number found is the major only
+                            version = ''.join(filter(str.isdigit, v))
                     elif k in ['status', 'al_status']:
                         status = v
 

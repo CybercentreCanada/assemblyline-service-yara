@@ -174,7 +174,7 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
 
     git_env = {}
     if ignore_ssl_errors:
-        git_env['GIT_SSL_NO_VERIFY'] = 1
+        git_env['GIT_SSL_NO_VERIFY'] = '1'
 
     if ca_cert:
         add_cacert(ca_cert)

@@ -112,7 +112,7 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
             if previous_update and last_modified <= previous_update:
                 # File has not been modified since last update, do nothing
                 cur_logger.info("The file has not been modified since last run, skipping...")
-                return
+                return []
 
         if previous_update:
             previous_update = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime(previous_update))
@@ -127,7 +127,7 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
         if response.status_code == requests.codes['not_modified']:
             # File has not been modified since last update, do nothing
             cur_logger.info("The file has not been modified since last run, skipping...")
-            return
+            return []
         elif response.ok:
             file_name = os.path.basename(f"{name}.yar")  # TODO: make filename as source name with extension .yar
             file_path = os.path.join(download_directory, file_name)
@@ -135,7 +135,7 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
                 f.write(response.content)
 
             # Return file_path
-            return file_path
+            return [file_path]
     except requests.Timeout:
         # TODO: should we retry?
         pass
@@ -302,7 +302,7 @@ def yara_update(updater_type, update_config_path, update_output_path,
             if uri.endswith('.git'):
                 files = git_clone_repo(download_directory, source, cur_logger, previous_update=previous_update)
             else:
-                files = [url_download(download_directory, source, cur_logger, previous_update=previous_update)]
+                files = url_download(download_directory, source, cur_logger, previous_update=previous_update)
 
             processed_files = set()
 

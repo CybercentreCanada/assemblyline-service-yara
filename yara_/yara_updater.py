@@ -93,7 +93,7 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
 
     cur_logger.info(f"{name} source is configured to {'ignore SSL errors' if ignore_ssl_errors else 'verify SSL'}.")
     if ca_cert:
-        cur_logger.info(f"A CA certificate has been provided with this source.")
+        cur_logger.info("A CA certificate has been provided with this source.")
         add_cacert(ca_cert)
 
     # Create a requests session

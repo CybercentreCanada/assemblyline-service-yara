@@ -100,7 +100,9 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
     session = requests.Session()
     session.verify = not ignore_ssl_errors
 
-    z
+    #Let https requests go through proxy
+    if proxy:
+        os.environ['https_proxy'] = proxy
 
     try:
         if isinstance(previous_update, str):
@@ -126,7 +128,7 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
             else:
                 headers = {'If-Modified-Since': previous_update}
 
-        response = session.get(uri, auth=auth, headers=headers, proxies=proxies)
+        response = session.get(uri, auth=auth, headers=headers)
 
         # Check the response code
         if response.status_code == requests.codes['not_modified']:
@@ -138,6 +140,10 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
             file_path = os.path.join(download_directory, file_name)
             with open(file_path, 'wb') as f:
                 f.write(response.content)
+
+            # Clear proxy setting
+            if proxy:
+                del os.environ['https_proxy']
 
             # Return file_path
             return [file_path]
@@ -176,8 +182,9 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
     if branch:
         git_options.append(f'--branch {branch}')
 
+    #Let https requests go through proxy
     if proxy:
-        git_config = f"https.proxy='{proxy}'" if 'https' in proxy else f"http.proxy='{proxy}'"
+        os.environ['https_proxy'] = proxy
 
     if ignore_ssl_errors:
         git_env['GIT_SSL_NO_VERIFY'] = '1'
@@ -234,6 +241,10 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
 
     if not files:
         cur_logger.warning(f"Could not find any yara file matching pattern: {pattern or '*.yar*'}")
+
+    # Clear proxy setting
+    if proxy:
+        del os.environ['https_proxy']
 
     return files
 

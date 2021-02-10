@@ -100,9 +100,7 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
     session = requests.Session()
     session.verify = not ignore_ssl_errors
 
-    proxies = None
-    if proxy:
-        proxies = {'https': proxy} if "https" in proxy else {'http': proxy}
+    z
 
     try:
         if isinstance(previous_update, str):

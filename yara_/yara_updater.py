@@ -387,8 +387,8 @@ def yara_update(updater_type, update_config_path, update_output_path,
 
                     if mode == "w":
                         mode = "a"
-                except:
-                    cur_logger.error(f"Problem parsing {file}")
+                except Exception as e:
+                    cur_logger.error(f"Problem parsing {file}: {e}")
                     continue
 
             # Check if the file is the same as the last run

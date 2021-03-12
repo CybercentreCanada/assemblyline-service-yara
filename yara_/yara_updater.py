@@ -355,36 +355,40 @@ def yara_update(updater_type, update_config_path, update_output_path,
                 # guess the type of files that we have in the current file
                 guessed_category = guess_category(file)
                 parser = Plyara()
-                signatures = parser.parse_string("\n".join(temp_lines))
+                # Try parsing the ruleset; on fail, move onto next set
+                try:
+                    signatures = parser.parse_string("\n".join(temp_lines))
 
-                # Ignore "cuckoo" rules
-                if "cuckoo" in parser.imports:
-                    parser.imports.remove("cuckoo")
+                    # Ignore "cuckoo" rules
+                    if "cuckoo" in parser.imports:
+                        parser.imports.remove("cuckoo")
 
-                # Guess category
-                if guessed_category:
-                    for s in signatures:
-                        if 'metadata' not in s:
-                            s['metadata'] = []
+                    # Guess category
+                    if guessed_category:
+                        for s in signatures:
+                            if 'metadata' not in s:
+                                s['metadata'] = []
 
-                        # Do not override category with guessed category if it already exists
-                        for meta in s['metadata']:
-                            if 'category' in meta:
-                                continue
+                            # Do not override category with guessed category if it already exists
+                            for meta in s['metadata']:
+                                if 'category' in meta:
+                                    continue
 
-                        s['metadata'].append({'category': guessed_category})
-                        s['metadata'].append({guessed_category: s.get('rule_name')})
+                            s['metadata'].append({'category': guessed_category})
+                            s['metadata'].append({guessed_category: s.get('rule_name')})
 
-                # Save all rules from source into single file
-                with open(file_name, mode) as f:
-                    for s in signatures:
-                        # Fix imports and remove cuckoo
-                        s['imports'] = utils.detect_imports(s)
-                        if "cuckoo" not in s['imports']:
-                            f.write(utils.rebuild_yara_rule(s))
+                    # Save all rules from source into single file
+                    with open(file_name, mode) as f:
+                        for s in signatures:
+                            # Fix imports and remove cuckoo
+                            s['imports'] = utils.detect_imports(s)
+                            if "cuckoo" not in s['imports']:
+                                f.write(utils.rebuild_yara_rule(s))
 
-                if mode == "w":
-                    mode = "a"
+                    if mode == "w":
+                        mode = "a"
+                except:
+                    continue
 
             # Check if the file is the same as the last run
             if os.path.exists(file_name):

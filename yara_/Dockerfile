@@ -23,7 +23,9 @@ RUN make install
 # Build the yara python plugins
 USER assemblyline
 RUN touch /tmp/before-pip
-RUN pip install --no-cache-dir --user yara-python==${YARA_VERSION} gitpython plyara && rm -rf ~/.cache/pip
+RUN pip install --no-cache-dir --user gitpython plyara
+RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" yara-python==${YARA_VERSION}
+RUN rm -rf ~/.cache/pip
 
 # Remove files that existed before the pip install so that our copy command below doesn't take a snapshot of
 # files that already exist in the base image

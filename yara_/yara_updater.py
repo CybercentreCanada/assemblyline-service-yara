@@ -215,14 +215,16 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
     if os.path.exists(clone_dir):
         shutil.rmtree(clone_dir)
     os.makedirs(clone_dir)
+
+    repo = None
     try:
         repo = Repo.clone_from(url, clone_dir, env=git_env, multi_options=git_options, config=git_config)
+
+        if not isinstance(repo, Repo):
+            cur_logger.warning("Could not clone repository")
+            return []
     except GitCommandError as e:
         cur_logger.error(f"Problem cloning repo: {e}")
-        return []
-
-    if not isinstance(repo, Repo):
-        cur_logger.warning("Could not clone repository")
         return []
 
     # Check repo last commit

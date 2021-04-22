@@ -15,7 +15,7 @@ import yaml
 from assemblyline.common import forge
 from assemblyline.common.isotime import iso_to_epoch
 from assemblyline_client import get_client
-from git import Repo
+from git import Repo, GitCommandError
 from plyara import Plyara, utils
 
 from assemblyline.common import log as al_log
@@ -100,7 +100,7 @@ def url_download(download_directory: str, source: Dict[str, Any], cur_logger, pr
     session = requests.Session()
     session.verify = not ignore_ssl_errors
 
-    #Let https requests go through proxy
+    # Let https requests go through proxy
     if proxy:
         os.environ['https_proxy'] = proxy
 
@@ -182,7 +182,7 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
     if branch:
         git_options.append(f'--branch {branch}')
 
-    #Let https requests go through proxy
+    # Let https requests go through proxy
     if proxy:
         os.environ['https_proxy'] = proxy
 
@@ -215,11 +215,14 @@ def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
     if os.path.exists(clone_dir):
         shutil.rmtree(clone_dir)
     os.makedirs(clone_dir)
-
-    repo = Repo.clone_from(url, clone_dir, env=git_env, multi_options=git_options, config=git_config)
+    try:
+        repo = Repo.clone_from(url, clone_dir, env=git_env, multi_options=git_options, config=git_config)
+    except GitCommandError as e:
+        cur_logger.error(f"Problem cloning repo: {e}")
+        return []
 
     if not isinstance(repo, Repo):
-        cur_logger.warning(f"Could not clone repository")
+        cur_logger.warning("Could not clone repository")
         return []
 
     # Check repo last commit
@@ -278,6 +281,7 @@ def yara_update(updater_type, update_config_path, update_output_path,
     """
     Using an update configuration file as an input, which contains a list of sources, download all the file(s).
     """
+    cur_logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
     # noinspection PyBroadException
     try:
         # Load updater configuration

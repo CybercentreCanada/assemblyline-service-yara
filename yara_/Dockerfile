@@ -1,6 +1,6 @@
 FROM cccs/assemblyline-v4-service-base:latest AS base
 ENV SERVICE_PATH yara_.yara_.Yara
-ENV YARA_VERSION='4.0.2'
+ENV YARA_VERSION='4.1.0'
 
 # Install runtime libraries we will need later
 USER root

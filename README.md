@@ -14,7 +14,7 @@ This Assemblyline service runs the Yara application against all file types.
 
 #### Execution
 
-Currently AL runs Yara 4.0.2, and therefore supports the following external modules:
+Currently AL runs Yara 4.1.0, and therefore supports the following external modules:
 
 * Dotnet
 * ELF
@@ -29,7 +29,7 @@ Currently AL runs Yara 4.0.2, and therefore supports the following external modu
  
  Rule creation:
  
- * https://yara.readthedocs.io/en/v4.0.2/
+ * https://yara.readthedocs.io/en/v4.1.0/
  
  CCCS Standard:
  

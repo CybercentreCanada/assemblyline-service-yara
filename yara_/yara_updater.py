@@ -23,6 +23,8 @@ from assemblyline.common.digests import get_sha256_for_file
 from yara_.yara_importer import YaraImporter
 from yara_.yara_validator import YaraValidator
 
+al_log.init_logging('updater.yara')
+logger = logging.getLogger('assemblyline.updater.yara')
 classification = forge.get_classification()
 
 UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', "/tmp/yara_updater_config.yaml")
@@ -278,8 +280,8 @@ def replace_include(include, dirname, processed_files: Set[str], cur_logger):
     return temp_lines, processed_files
 
 
-def yara_update(updater_type, update_config_path, update_output_path,
-                download_directory, externals, cur_logger) -> None:
+def update(updater_type, update_config_path, update_output_path,
+           download_directory, externals, cur_logger) -> None:
     """
     Using an update configuration file as an input, which contains a list of sources, download all the file(s).
     """
@@ -469,7 +471,9 @@ def yara_update(updater_type, update_config_path, update_output_path,
         cur_logger.exception("Updater ended with an exception!")
 
 
+def update_yara():
+    update("yara", UPDATE_CONFIGURATION_PATH, UPDATE_OUTPUT_PATH, UPDATE_DIR, YARA_EXTERNALS, logger)
+
+
 if __name__ == '__main__':
-    al_log.init_logging('updater.yara')
-    logger = logging.getLogger('assemblyline.updater.yara')
-    yara_update("yara", UPDATE_CONFIGURATION_PATH, UPDATE_OUTPUT_PATH, UPDATE_DIR, YARA_EXTERNALS, logger)
+    update_yara()

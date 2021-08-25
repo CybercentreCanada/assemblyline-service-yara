@@ -1,11 +1,16 @@
 import hashlib
 import json
 import os
+import shutil
 import threading
+import time
+import tempfile
+import tarfile
 from pathlib import Path
 from typing import List
 
 import yara
+import requests
 
 from assemblyline.common import forge
 from assemblyline.common.digests import get_sha256_for_file
@@ -15,6 +20,9 @@ from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FO
 
 Classification = forge.get_classification()
 FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY', "/mount/updates/")
+UPDATES_HOST = os.environ.get('updates_host')
+UPDATES_PORT = os.environ.get('updates_port')
+UPDATES_KEY = os.environ.get('updates_key')
 
 
 class YaraMetadata(object):
@@ -197,8 +205,53 @@ class Yara(ServiceBase):
         self.deep_scan = None
 
         # Load rules and externals
-        self.rules_hash = self._get_rules_hash()
+        self.rules_directory = None
+        self.update_time = None
+        self.rules_hash = ''
         self.yara_externals = {f'al_{x.replace(".", "_")}': "" for x in externals}
+
+    def _download_rules(self):
+        url_base = f'http://{UPDATES_HOST}:{UPDATES_PORT}/'
+        headers = {
+            'X_APIKEY': UPDATES_KEY
+        }
+
+        # Check if there are new        
+        while True:
+            resp = requests.get(url_base + 'status')
+            resp.raise_for_status()
+            status = resp.json()
+            if self.update_time is not None and self.update_time >= status['local_update_time']:
+                return False
+            if status['download_available']:
+                break
+            self.log.warning('Waiting on update server availability...')
+            time.sleep(10)
+
+        # Download the current update
+        temp_directory = tempfile.mkdtemp()
+        buffer_handle, buffer_name = tempfile.mkstemp()
+        try:
+            with os.fdopen(buffer_handle, 'wb') as buffer:
+                resp = requests.get(url_base + 'tar', headers=headers)
+                resp.raise_for_status()
+                for chunk in resp.iter_content(chunk_size=1024):
+                    buffer.write(chunk)
+
+            tar_handle = tarfile.open(buffer_name)
+            tar_handle.extractall(temp_directory)
+            self.update_time = status['local_update_time']
+            self.rules_directory, temp_directory = temp_directory, self.rules_directory
+            return True
+        finally:
+            os.unlink(buffer_name)
+            if temp_directory is not None:
+                shutil.rmtree(temp_directory, ignore_errors=True)
+
+    def _update_rules(self):
+        if self._download_rules():
+            self.rules_hash = self._get_rules_hash()
+            self._load_rules()
 
     def _add_resultinfo_for_match(self, result: Result, match):
         """
@@ -430,21 +483,7 @@ class Yara(ServiceBase):
         almeta.classification = almeta.classification.upper()
 
     def _get_rules_hash(self):
-        if not os.path.exists(FILE_UPDATE_DIRECTORY):
-            self.log.warning(f"{self.name} rules directory not found")
-            return None
-
-        try:
-            rules_directory = max([os.path.join(FILE_UPDATE_DIRECTORY, d)
-                                   for d in os.listdir(FILE_UPDATE_DIRECTORY)
-                                   if os.path.isdir(os.path.join(FILE_UPDATE_DIRECTORY, d))
-                                   and not d.startswith('.tmp')],
-                                  key=os.path.getctime)
-        except ValueError:
-            self.log.warning(f"No valid {self.name} rules directory found")
-            return None
-
-        self.rules_list = [str(f) for f in Path(rules_directory).rglob("*") if os.path.isfile(str(f))]
+        self.rules_list = [str(f) for f in Path(self.rules_directory).rglob("*") if os.path.isfile(str(f))]
         all_sha256s = [get_sha256_for_file(f) for f in self.rules_list]
 
         self.log.info(f"{self.name} will load the following rule files: {self.rules_list}")
@@ -558,9 +597,15 @@ class Yara(ServiceBase):
 
         try:
             # Load the rules
-            self._load_rules()
-
+            self._update_rules()
         except Exception as e:
             raise Exception(f"Something went wrong while trying to load {self.name} rules: {str(e)}")
 
         self.log.info(f"{self.name} started with service version: {self.get_service_version()}")
+
+    def _cleanup(self) -> None:
+        super()._cleanup()
+        try: 
+            self._update_rules()
+        except Exception as e:
+            raise Exception(f"Something went wrong while trying to load {self.name} rules: {str(e)}")

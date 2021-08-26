@@ -1,26 +1,25 @@
-from __future__ import annotations
 import glob
+import json
 import logging
 import os
 import re
 import shutil
 import tempfile
 import time
-from typing import Any, Optional
+from typing import List, Dict, Any, Optional, Set
 from zipfile import ZipFile
 
 import certifi
 import requests
-
+import yaml
 from assemblyline.common import forge
-from assemblyline.common.isotime import iso_to_epoch, epoch_to_iso
-from assemblyline.common.digests import get_sha256_for_file
-from assemblyline.odm.models.service import Service, UpdateSource
-from assemblyline_v4_service.updater.updater import ServiceUpdater, temporary_api_key
+from assemblyline.common.isotime import iso_to_epoch
 from assemblyline_client import get_client
 from git import Repo, GitCommandError
 from plyara import Plyara, utils
 
+from assemblyline.common import log as al_log
+from assemblyline.common.digests import get_sha256_for_file
 from yara_.yara_importer import YaraImporter
 from yara_.yara_validator import YaraValidator
 
@@ -29,16 +28,11 @@ classification = forge.get_classification()
 UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', "/tmp/yara_updater_config.yaml")
 UPDATE_OUTPUT_PATH = os.environ.get('UPDATE_OUTPUT_PATH', "/tmp/yara_updater_output")
 UPDATE_DIR = os.path.join(tempfile.gettempdir(), 'yara_updates')
-UI_SERVER = os.getenv('UI_SERVER', 'https://nginx')
 
 YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
 
 
-class SkipSource(RuntimeError):
-    pass
-
-
-def _compile_rules(rules_file, externals, logger: logging.Logger):
+def _compile_rules(rules_file, externals, cur_logger):
     """
     Saves Yara rule content to file, validates the content with Yara Validator, and uses Yara python to compile
     the rule set.
@@ -50,7 +44,7 @@ def _compile_rules(rules_file, externals, logger: logging.Logger):
         Compiled rules, compiled rules md5.
     """
     try:
-        validate = YaraValidator(externals=externals, logger=logger)
+        validate = YaraValidator(externals=externals, logger=cur_logger)
         validate.validate_rules(rules_file)
     except Exception as e:
         raise e
@@ -64,7 +58,7 @@ def add_cacert(cert: str):
         ca_editor.write(f"\n{cert}")
 
 
-def guess_category(rule_file_name: str) -> Optional[str]:
+def guess_category(rule_file_name):
     cat_map = {
         "technique": ["antidebug", "antivm", "capabilities"],
         "info": ["info", "deprecated", "crypto", "packer"],
@@ -81,7 +75,7 @@ def guess_category(rule_file_name: str) -> Optional[str]:
     return None
 
 
-def url_download(download_directory: str, source: dict[str, Any], cur_logger, previous_update=None) -> list[str]:
+def url_download(download_directory: str, source: Dict[str, Any], cur_logger, previous_update=None) -> Optional[str]:
     if os.path.exists(download_directory):
         shutil.rmtree(download_directory)
     os.makedirs(download_directory)
@@ -125,7 +119,7 @@ def url_download(download_directory: str, source: dict[str, Any], cur_logger, pr
             if previous_update and last_modified <= previous_update:
                 # File has not been modified since last update, do nothing
                 cur_logger.info("The file has not been modified since last run, skipping...")
-                raise SkipSource()
+                return []
 
         if previous_update:
             previous_update = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime(previous_update))
@@ -140,7 +134,7 @@ def url_download(download_directory: str, source: dict[str, Any], cur_logger, pr
         if response.status_code == requests.codes['not_modified']:
             # File has not been modified since last update, do nothing
             cur_logger.info("The file has not been modified since last run, skipping...")
-            raise SkipSource()
+            return []
         elif response.ok:
             file_name = os.path.basename(f"{name}.yar")  # TODO: make filename as source name with extension .yar
             file_path = os.path.join(download_directory, file_name)
@@ -159,14 +153,15 @@ def url_download(download_directory: str, source: dict[str, Any], cur_logger, pr
     except Exception as e:
         # Catch all other types of exceptions such as ConnectionError, ProxyError, etc.
         cur_logger.info(str(e))
+        exit()
+        # TODO: Should we exit even if one file fails to download? Or should we continue downloading other files?
     finally:
         # Close the requests session
         session.close()
-    raise SkipSource()
 
 
-def git_clone_repo(download_directory: str, source: dict[str, Any], cur_logger,
-                   previous_update=None, branch=None) -> list[str]:
+def git_clone_repo(download_directory: str, source: Dict[str, Any], cur_logger,
+                   previous_update=None, branch=None) -> List[str] and List[str]:
     name = source['name']
     url = source['uri']
     pattern = source.get('pattern', None)
@@ -227,10 +222,10 @@ def git_clone_repo(download_directory: str, source: dict[str, Any], cur_logger,
 
         if not isinstance(repo, Repo):
             cur_logger.warning("Could not clone repository")
-            raise SkipSource()
+            return []
     except GitCommandError as e:
         cur_logger.error(f"Problem cloning repo: {e}")
-        raise SkipSource()
+        return []
 
     # Check repo last commit
     if previous_update:
@@ -239,7 +234,7 @@ def git_clone_repo(download_directory: str, source: dict[str, Any], cur_logger,
         for c in repo.iter_commits():
             if c.committed_date < previous_update:
                 cur_logger.info("There are no new commits, skipping repository...")
-                raise SkipSource()
+                return []
             break
 
     if pattern:
@@ -259,7 +254,7 @@ def git_clone_repo(download_directory: str, source: dict[str, Any], cur_logger,
     return files
 
 
-def replace_include(include, dirname, processed_files: set[str], cur_logger: logging.Logger):
+def replace_include(include, dirname, processed_files: Set[str], cur_logger):
     include_path = re.match(r"include [\'\"](.{4,})[\'\"]", include).group(1)
     full_include_path = os.path.normpath(os.path.join(dirname, include_path))
     if not os.path.exists(full_include_path):
@@ -283,196 +278,198 @@ def replace_include(include, dirname, processed_files: set[str], cur_logger: log
     return temp_lines, processed_files
 
 
-class YaraUpdateServer(ServiceUpdater):
-    def __init__(self, *args, updater_type:str, externals:dict[str, str], **kwargs):
-        super().__init__(*args, **kwargs)
-        self.updater_type = updater_type
-        self.externals = externals
+def yara_update(updater_type, update_config_path, update_output_path,
+                download_directory, externals, cur_logger) -> None:
+    """
+    Using an update configuration file as an input, which contains a list of sources, download all the file(s).
+    """
+    cur_logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+    # noinspection PyBroadException
+    try:
+        # Load updater configuration
+        update_config = {}
+        if update_config_path and os.path.exists(update_config_path):
+            with open(update_config_path, 'r') as yml_fh:
+                update_config = yaml.safe_load(yml_fh)
+        else:
+            cur_logger.error(f"Update configuration file doesn't exist: {update_config_path}")
+            exit()
 
-    def do_local_update(self) -> None:
-        old_update_time = self.get_local_update_time()
-        run_time = time.time()
-        output_directory = tempfile.mkdtemp()
+        # Exit if no update sources given
+        if 'sources' not in update_config.keys() or not update_config['sources']:
+            cur_logger.error(f"Update configuration does not contain any source to update from")
+            exit()
 
-        self.log.info(f"Setup service account.")
-        username = self.ensure_service_account()
-        self.log.info(f"Create temporary API key.")
-        with temporary_api_key(self.datastore, username) as api_key:
-            self.log.info(f"Connecting to Assemblyline API: {UI_SERVER}")
-            al_client = get_client(UI_SERVER, apikey=(username, api_key), verify=False)
+        # Initialise al_client
+        server = update_config['ui_server']
+        user = update_config['api_user']
+        api_key = update_config['api_key']
+        cur_logger.info(f"Connecting to Assemblyline API: {server}...")
+        al_client = get_client(server, apikey=(user, api_key), verify=False)
+        cur_logger.info(f"Connected!")
 
-            # Check if new signatures have been added
-            self.log.info(f"Check for new signatures.")
-            if al_client.signature.update_available(since=epoch_to_iso(old_update_time) or '', sig_type=self.updater_type)['update_available']:
-                self.log.info("An update is available for download from the datastore")
+        # Parse updater configuration
+        previous_update = update_config.get('previous_update', None)
+        previous_hash = json.loads(update_config.get('previous_hash', None) or "{}")
+        sources = {source['name']: source for source in update_config['sources']}
+        files_sha256 = {}
+        files_default_classification = {}
 
-                extracted_zip = False
-                attempt = 0
+        # Create working directory
+        updater_working_dir = os.path.join(tempfile.gettempdir(), 'updater_working_dir')
+        if os.path.exists(updater_working_dir):
+            shutil.rmtree(updater_working_dir)
+        os.makedirs(updater_working_dir)
 
-                # Sometimes a zip file isn't always returned, will affect service's use of signature source. Patience..
-                while not extracted_zip and attempt < 5:
-                    temp_zip_file = os.path.join(output_directory, 'temp.zip')
-                    al_client.signature.download(output=temp_zip_file,
-                                                    query=f"type:{self.updater_type} AND (status:NOISY OR status:DEPLOYED)")
+        # Go through each source and download file
+        for source_name, source in sources.items():
+            os.makedirs(os.path.join(updater_working_dir, source_name))
+            # 1. Download signatures
+            cur_logger.info(f"Downloading files from: {source['uri']}")
+            uri: str = source['uri']
 
-                    if os.path.exists(temp_zip_file):
-                        try:
-                            with ZipFile(temp_zip_file, 'r') as zip_f:
-                                zip_f.extractall(output_directory)
-                                extracted_zip = True
-                                self.log.info("Zip extracted.")
-                        except:
-                            attempt += 1
-                            self.log.warning(f"[{attempt}/5] Bad zip. Trying again after 30s...")
-                            time.sleep(30)
+            if uri.endswith('.git'):
+                files = git_clone_repo(download_directory, source, cur_logger, previous_update=previous_update)
+            else:
+                files = url_download(download_directory, source, cur_logger, previous_update=previous_update)
 
-                        os.remove(temp_zip_file)
+            processed_files = set()
 
-                if attempt == 5:
-                    self.log.error("Signatures aren't saved to disk. Check sources..")
-                    shutil.rmtree(output_directory, ignore_errors=True)
-                else:
-                    self.log.info(f"New ruleset successfully downloaded and ready to use")
-                    self.serve_directory(output_directory)
-                    self.set_local_update_time(run_time)
+            # 2. Aggregate files
+            file_name = os.path.join(updater_working_dir, f"{source_name}.yar")
+            mode = "w"
+            for file in files:
+                # File has already been processed before, skip it to avoid duplication of rules
+                if file in processed_files:
+                    continue
 
-    def do_source_update(self, service: Service) -> None:
-        self.log.info(f"Connecting to Assemblyline API: {UI_SERVER}...")
-        run_time = time.time()
-        username = self.ensure_service_account()
-        with temporary_api_key(self.datastore, username) as api_key:
-            al_client = get_client(UI_SERVER, apikey=(username, api_key), verify=False)
-            old_update_time = self.get_source_update_time()
+                cur_logger.info(f"Processing file: {file}")
 
-            self.log.info(f"Connected!")
+                file_dirname = os.path.dirname(file)
+                processed_files.add(os.path.normpath(file))
+                with open(file, 'r') as f:
+                    f_lines = f.readlines()
 
-            # Parse updater configuration
-            previous_hashes: dict[str, str] = self.get_source_extra()
-            sources: dict[str, UpdateSource] = {_s['name']: _s for _s in service.update_config.sources}
-            files_sha256: dict[str, str] = {}
-            changed_files: list[str] = []
-            files_default_classification = {}
-
-            # Go through each source and download file
-            with tempfile.TemporaryDirectory() as updater_working_dir:
-                with tempfile.TemporaryDirectory() as download_directory:
-                    for source_name, source_obj in sources.items():
-                        source = source_obj.as_primitives()
-                        os.makedirs(os.path.join(updater_working_dir, source_name))
-                        # 1. Download signatures
-                        self.log.info(f"Downloading files from: {source['uri']}")
-                        uri: str = source['uri']
-                        cache_name = f"{source_name}.yar"
-
-                        try:
-                            if uri.endswith('.git'):
-                                files = git_clone_repo(download_directory, source, self.log, previous_update=old_update_time)
-                            else:
-                                files = url_download(download_directory, source, self.log, previous_update=old_update_time)
-                        except SkipSource:
-                            if cache_name in previous_hashes:
-                                files_sha256[cache_name] = previous_hashes[cache_name]
-                            continue
-
-                        processed_files: set[str] = set()
-
-                        # 2. Aggregate files
-                        file_name = os.path.join(updater_working_dir, cache_name)
-                        mode = "w"
-                        for file in files:
-                            # File has already been processed before, skip it to avoid duplication of rules
-                            if file in processed_files:
-                                continue
-
-                            self.log.info(f"Processing file: {file}")
-
-                            file_dirname = os.path.dirname(file)
-                            processed_files.add(os.path.normpath(file))
-                            with open(file, 'r') as f:
-                                f_lines = f.readlines()
-
-                            temp_lines: list[str] = []
-                            for _, f_line in enumerate(f_lines):
-                                if f_line.startswith("include"):
-                                    lines, processed_files = replace_include(f_line, file_dirname, processed_files, self.log)
-                                    temp_lines.extend(lines)
-                                else:
-                                    temp_lines.append(f_line)
-
-                            # guess the type of files that we have in the current file
-                            guessed_category = guess_category(file)
-                            parser = Plyara()
-                            # Try parsing the ruleset; on fail, move onto next set
-                            try:
-                                signatures: list[dict[str, Any]] = parser.parse_string("\n".join(temp_lines))
-
-                                # Ignore "cuckoo" rules
-                                if "cuckoo" in parser.imports:
-                                    parser.imports.remove("cuckoo")
-
-                                # Guess category
-                                if guessed_category:
-                                    for s in signatures:
-                                        s.setdefault('metadata', [])
-
-                                        # Do not override category with guessed category if it already exists
-                                        for meta in s['metadata']:
-                                            if 'category' in meta:
-                                                continue
-
-                                        s['metadata'].append({'category': guessed_category})
-                                        s['metadata'].append({guessed_category: s.get('rule_name')})
-
-                                # Save all rules from source into single file
-                                with open(file_name, mode) as f:
-                                    for s in signatures:
-                                        # Fix imports and remove cuckoo
-                                        s['imports'] = utils.detect_imports(s)
-                                        if "cuckoo" not in s['imports']:
-                                            f.write(utils.rebuild_yara_rule(s))
-
-                                if mode == "w":
-                                    mode = "a"
-                            except Exception as e:
-                                self.log.error(f"Problem parsing {file}: {e}")
-                                continue
-
-                        # Check if the file is the same as the last run
-                        if os.path.exists(file_name):
-                            sha256 = get_sha256_for_file(file_name)
-                            if sha256 != previous_hashes.get(cache_name, None):
-                                files_sha256[cache_name] = sha256
-                                changed_files.append(cache_name)
-                                files_default_classification[cache_name] = source.get('default_classification', classification.UNRESTRICTED)
-                            else:
-                                self.log.info(f'File {cache_name} has not changed since last run. Skipping it...')
-
-                    if changed_files:
-                        self.log.info(f"Found new {self.updater_type.upper()} rules files to process!")
-
-                        yara_importer = YaraImporter(self.updater_type, al_client, logger=self.log)
-
-                        # Validating and importing the different signatures
-                        for base_file in changed_files:
-                            self.log.info(f"Validating output file: {base_file}")
-                            cur_file = os.path.join(updater_working_dir, base_file)
-                            source_name = os.path.splitext(os.path.basename(cur_file))[0]
-                            default_classification = files_default_classification.get(base_file, classification.UNRESTRICTED)
-
-                            try:
-                                _compile_rules(cur_file, self.externals, self.log)
-                                yara_importer.import_file(cur_file, source_name, default_classification=default_classification)
-                            except Exception as e:
-                                raise e
+                temp_lines = []
+                for i, f_line in enumerate(f_lines):
+                    if f_line.startswith("include"):
+                        lines, processed_files = replace_include(f_line, file_dirname, processed_files, cur_logger)
+                        temp_lines.extend(lines)
                     else:
-                        self.log.info(f'No new {self.updater_type.upper()} rules files to process...')
+                        temp_lines.append(f_line)
 
-        self.set_source_update_time(run_time)
-        self.set_source_extra(files_sha256)
-        self.set_active_config_hash(self.config_hash(service))
-        self.local_update_flag.set()
+                # guess the type of files that we have in the current file
+                guessed_category = guess_category(file)
+                parser = Plyara()
+                # Try parsing the ruleset; on fail, move onto next set
+                try:
+                    signatures = parser.parse_string("\n".join(temp_lines))
+
+                    # Ignore "cuckoo" rules
+                    if "cuckoo" in parser.imports:
+                        parser.imports.remove("cuckoo")
+
+                    # Guess category
+                    if guessed_category:
+                        for s in signatures:
+                            if 'metadata' not in s:
+                                s['metadata'] = []
+
+                            # Do not override category with guessed category if it already exists
+                            for meta in s['metadata']:
+                                if 'category' in meta:
+                                    continue
+
+                            s['metadata'].append({'category': guessed_category})
+                            s['metadata'].append({guessed_category: s.get('rule_name')})
+
+                    # Save all rules from source into single file
+                    with open(file_name, mode) as f:
+                        for s in signatures:
+                            # Fix imports and remove cuckoo
+                            s['imports'] = utils.detect_imports(s)
+                            if "cuckoo" not in s['imports']:
+                                f.write(utils.rebuild_yara_rule(s))
+
+                    if mode == "w":
+                        mode = "a"
+                except Exception as e:
+                    cur_logger.error(f"Problem parsing {file}: {e}")
+                    continue
+
+            # Check if the file is the same as the last run
+            if os.path.exists(file_name):
+                cache_name = os.path.basename(file_name)
+                sha256 = get_sha256_for_file(file_name)
+                if sha256 != previous_hash.get(cache_name, None):
+                    files_sha256[cache_name] = sha256
+                    files_default_classification[cache_name] = source.get('default_classification',
+                                                                          classification.UNRESTRICTED)
+                else:
+                    cur_logger.info(f'File {cache_name} has not changed since last run. Skipping it...')
+
+        if files_sha256:
+            cur_logger.info(f"Found new {updater_type.upper()} rules files to process!")
+
+            yara_importer = YaraImporter(updater_type, al_client, logger=cur_logger)
+
+            # Validating and importing the different signatures
+            for base_file in files_sha256:
+                cur_logger.info(f"Validating output file: {base_file}")
+                cur_file = os.path.join(updater_working_dir, base_file)
+                source_name = os.path.splitext(os.path.basename(cur_file))[0]
+                default_classification = files_default_classification.get(base_file, classification.UNRESTRICTED)
+
+                try:
+                    _compile_rules(cur_file, externals, cur_logger)
+                    yara_importer.import_file(cur_file, source_name, default_classification=default_classification)
+                except Exception as e:
+                    raise e
+        else:
+            cur_logger.info(f'No new {updater_type.upper()} rules files to process...')
+
+        # Check if new signatures have been added
+        if al_client.signature.update_available(since=previous_update or '', sig_type=updater_type)['update_available']:
+            cur_logger.info("An update is available for download from the datastore")
+
+            if not os.path.exists(update_output_path):
+                os.makedirs(update_output_path)
+
+            extracted_zip = False
+            attempt = 0
+
+            # Sometimes a zip file isn't always returned, will affect service's use of signature source. Patience..
+            while not extracted_zip and attempt < 5:
+                temp_zip_file = os.path.join(update_output_path, 'temp.zip')
+                al_client.signature.download(output=temp_zip_file,
+                                             query=f"type:{updater_type} AND (status:NOISY OR status:DEPLOYED)")
+
+                if os.path.exists(temp_zip_file):
+                    try:
+                        with ZipFile(temp_zip_file, 'r') as zip_f:
+                            zip_f.extractall(update_output_path)
+                            extracted_zip = True
+                            cur_logger.info("Zip extracted.")
+                    except:
+                        attempt += 1
+                        cur_logger.warning(f"[{attempt}/5] Bad zip. Trying again after 30s...")
+                        time.sleep(30)
+
+                    os.remove(temp_zip_file)
+
+            cur_logger.error("Signatures aren't saved to disk. Check sources..") if attempt == 5 else None
+            # Create the response yaml
+            with open(os.path.join(update_output_path, 'response.yaml'), 'w') as yml_fh:
+                yaml.safe_dump(dict(hash=json.dumps(files_sha256)), yml_fh)
+
+            cur_logger.info(f"New ruleset successfully downloaded and ready to use")
+
+        cur_logger.info(f"{updater_type.upper()} updater completed successfully")
+    except Exception:
+        cur_logger.exception("Updater ended with an exception!")
 
 
 if __name__ == '__main__':
-    with YaraUpdateServer(updater_type='yara', externals=YARA_EXTERNALS) as server:
-        server.serve_forever()
+    al_log.init_logging('updater.yara')
+    logger = logging.getLogger('assemblyline.updater.yara')
+    yara_update("yara", UPDATE_CONFIGURATION_PATH, UPDATE_OUTPUT_PATH, UPDATE_DIR, YARA_EXTERNALS, logger)

@@ -125,18 +125,18 @@ dependencies:
   updates:
     container:
       allow_internet_access: true
-      command: ["python", "-m", "yara_.yara_updater"]
+      command: ["python", "-m", "yara_.update_server"]
       image: ${REGISTRY}cccs/assemblyline-service-yara:$SERVICE_TAG
       ports: ["5003"]
     run_as_core: True
 
 update_config:
   generates_signatures: true
-  # method: run
-  #   run_options:
-  #   allow_internet_access: true
-  #   command: ["python", "-m", "yara_.yara_updater"]
-  #   image: ${REGISTRY}cccs/assemblyline-service-yara:$SERVICE_TAG
+  method: run
+    run_options:
+    allow_internet_access: true
+    command: ["python", "-m", "yara_.yara_updater"]
+    image: ${REGISTRY}cccs/assemblyline-service-yara:$SERVICE_TAG
   sources:
     - name: antidebug
       pattern: ^antidebug_antivm_index.yar$

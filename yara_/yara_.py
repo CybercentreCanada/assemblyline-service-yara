@@ -249,7 +249,25 @@ class Yara(ServiceBase):
                 shutil.rmtree(temp_directory, ignore_errors=True)
 
     def _update_rules(self):
-        if self._download_rules():
+        try:
+            if self._download_rules():
+                self.rules_hash = self._get_rules_hash()
+                self._load_rules()
+        except Exception:
+            if not os.path.exists(FILE_UPDATE_DIRECTORY):
+                self.log.warning(f"{self.name} rules directory not found")
+                return None
+
+            try:
+                self.rules_directory = max([os.path.join(FILE_UPDATE_DIRECTORY, d)
+                                            for d in os.listdir(FILE_UPDATE_DIRECTORY)
+                                            if os.path.isdir(os.path.join(FILE_UPDATE_DIRECTORY, d))
+                                            and not d.startswith('.tmp')],
+                                            key=os.path.getctime)
+            except ValueError:
+                self.log.warning(f"No valid {self.name} rules directory found")
+                return None
+                
             self.rules_hash = self._get_rules_hash()
             self._load_rules()
 

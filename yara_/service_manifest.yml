@@ -133,7 +133,7 @@ dependencies:
 update_config:
   generates_signatures: true
   method: run
-    run_options:
+  run_options:
     allow_internet_access: true
     command: ["python", "-m", "yara_.yara_updater"]
     image: ${REGISTRY}cccs/assemblyline-service-yara:$SERVICE_TAG

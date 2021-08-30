@@ -24,7 +24,7 @@ RUN make install
 # Build the yara python plugins
 USER assemblyline
 RUN touch /tmp/before-pip
-RUN pip install --no-cache-dir --user gitpython plyara gunicorn
+RUN pip install --no-cache-dir --user gitpython plyara gunicorn flask
 RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" yara-python==${YARA_VERSION}
 RUN rm -rf ~/.cache/pip
 

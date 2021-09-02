@@ -122,7 +122,7 @@ dependencies:
   updates:
     container:
       allow_internet_access: true
-      command: ["python", "-m", "tagcheck.tagcheck_updater"]
+      command: ["python", "-m", "tagcheck.update_server"]
       image: ${REGISTRY}cccs/assemblyline-service-tagcheck:$SERVICE_TAG
       ports: ["5003"]
     run_as_core: True

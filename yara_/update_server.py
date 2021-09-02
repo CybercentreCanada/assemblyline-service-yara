@@ -26,9 +26,6 @@ from yara_.yara_validator import YaraValidator
 
 classification = forge.get_classification()
 
-UPDATE_CONFIGURATION_PATH = os.environ.get('UPDATE_CONFIGURATION_PATH', "/tmp/yara_updater_config.yaml")
-UPDATE_OUTPUT_PATH = os.environ.get('UPDATE_OUTPUT_PATH', "/tmp/yara_updater_output")
-UPDATE_DIR = os.path.join(tempfile.gettempdir(), 'yara_updates')
 UI_SERVER = os.getenv('UI_SERVER', 'https://nginx')
 
 YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
@@ -284,7 +281,7 @@ def replace_include(include, dirname, processed_files: set[str], cur_logger: log
 
 
 class YaraUpdateServer(ServiceUpdater):
-    def __init__(self, *args, updater_type:str, externals:dict[str, str], **kwargs):
+    def __init__(self, *args, updater_type: str, externals: dict[str, str], **kwargs):
         super().__init__(*args, **kwargs)
         self.updater_type = updater_type
         self.externals = externals
@@ -303,7 +300,8 @@ class YaraUpdateServer(ServiceUpdater):
 
             # Check if new signatures have been added
             self.log.info(f"Check for new signatures.")
-            if al_client.signature.update_available(since=epoch_to_iso(old_update_time) or '', sig_type=self.updater_type)['update_available']:
+            if al_client.signature.update_available(
+                    since=epoch_to_iso(old_update_time) or '', sig_type=self.updater_type)['update_available']:
                 self.log.info("An update is available for download from the datastore")
 
                 extracted_zip = False
@@ -312,8 +310,8 @@ class YaraUpdateServer(ServiceUpdater):
                 # Sometimes a zip file isn't always returned, will affect service's use of signature source. Patience..
                 while not extracted_zip and attempt < 5:
                     temp_zip_file = os.path.join(output_directory, 'temp.zip')
-                    al_client.signature.download(output=temp_zip_file,
-                                                    query=f"type:{self.updater_type} AND (status:NOISY OR status:DEPLOYED)")
+                    al_client.signature.download(
+                        output=temp_zip_file, query=f"type:{self.updater_type} AND (status:NOISY OR status:DEPLOYED)")
 
                     if os.path.exists(temp_zip_file):
                         try:
@@ -366,9 +364,11 @@ class YaraUpdateServer(ServiceUpdater):
 
                         try:
                             if uri.endswith('.git'):
-                                files = git_clone_repo(download_directory, source, self.log, previous_update=old_update_time)
+                                files = git_clone_repo(download_directory, source, self.log,
+                                                       previous_update=old_update_time)
                             else:
-                                files = url_download(download_directory, source, self.log, previous_update=old_update_time)
+                                files = url_download(download_directory, source, self.log,
+                                                     previous_update=old_update_time)
                         except SkipSource:
                             if cache_name in previous_hashes:
                                 files_sha256[cache_name] = previous_hashes[cache_name]
@@ -394,7 +394,8 @@ class YaraUpdateServer(ServiceUpdater):
                             temp_lines: list[str] = []
                             for _, f_line in enumerate(f_lines):
                                 if f_line.startswith("include"):
-                                    lines, processed_files = replace_include(f_line, file_dirname, processed_files, self.log)
+                                    lines, processed_files = replace_include(
+                                        f_line, file_dirname, processed_files, self.log)
                                     temp_lines.extend(lines)
                                 else:
                                     temp_lines.append(f_line)
@@ -443,7 +444,8 @@ class YaraUpdateServer(ServiceUpdater):
                             if sha256 != previous_hashes.get(cache_name, None):
                                 files_sha256[cache_name] = sha256
                                 changed_files.append(cache_name)
-                                files_default_classification[cache_name] = source.get('default_classification', classification.UNRESTRICTED)
+                                files_default_classification[cache_name] = source.get(
+                                    'default_classification', classification.UNRESTRICTED)
                             else:
                                 self.log.info(f'File {cache_name} has not changed since last run. Skipping it...')
 
@@ -457,11 +459,13 @@ class YaraUpdateServer(ServiceUpdater):
                             self.log.info(f"Validating output file: {base_file}")
                             cur_file = os.path.join(updater_working_dir, base_file)
                             source_name = os.path.splitext(os.path.basename(cur_file))[0]
-                            default_classification = files_default_classification.get(base_file, classification.UNRESTRICTED)
+                            default_classification = files_default_classification.get(
+                                base_file, classification.UNRESTRICTED)
 
                             try:
                                 _compile_rules(cur_file, self.externals, self.log)
-                                yara_importer.import_file(cur_file, source_name, default_classification=default_classification)
+                                yara_importer.import_file(cur_file, source_name,
+                                                          default_classification=default_classification)
                             except Exception as e:
                                 raise e
                     else:

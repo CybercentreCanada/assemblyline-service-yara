@@ -129,11 +129,6 @@ dependencies:
 
 update_config:
   generates_signatures: true
-  method: run
-  run_options:
-    allow_internet_access: true
-    command: ["python", "-m", "tagcheck.tagcheck_updater"]
-    image: ${REGISTRY}cccs/assemblyline-service-tagcheck:$SERVICE_TAG
   sources:
     - name: CCCS
       uri: https://assemblyline-support.s3.amazonaws.com/tagcheck.rules

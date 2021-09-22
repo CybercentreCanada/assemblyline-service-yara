@@ -1,24 +1,18 @@
 from __future__ import annotations
-import glob
 import logging
 import os
 import re
-import shutil
 import tempfile
 import time
 from typing import Any, Optional
-from zipfile import ZipFile
-
-import certifi
-import requests
 
 from assemblyline.common import forge
-from assemblyline.common.isotime import iso_to_epoch, epoch_to_iso
 from assemblyline.common.digests import get_sha256_for_file
 from assemblyline.odm.models.service import Service, UpdateSource
 from assemblyline_v4_service.updater.updater import ServiceUpdater, temporary_api_key
+from assemblyline_v4_service.updater.helper import git_clone_repo, url_download, SkipSource
+
 from assemblyline_client import get_client
-from git import Repo, GitCommandError
 from plyara import Plyara, utils
 
 from yara_.yara_importer import YaraImporter
@@ -29,10 +23,6 @@ classification = forge.get_classification()
 UI_SERVER = os.getenv('UI_SERVER', 'https://nginx')
 
 YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
-
-
-class SkipSource(RuntimeError):
-    pass
 
 
 def _compile_rules(rules_file, externals, logger: logging.Logger):
@@ -54,13 +44,6 @@ def _compile_rules(rules_file, externals, logger: logging.Logger):
     return True
 
 
-def add_cacert(cert: str):
-    # Add certificate to requests
-    cafile = certifi.where()
-    with open(cafile, 'a') as ca_editor:
-        ca_editor.write(f"\n{cert}")
-
-
 def guess_category(rule_file_name: str) -> Optional[str]:
     cat_map = {
         "technique": ["antidebug", "antivm", "capabilities"],
@@ -76,184 +59,6 @@ def guess_category(rule_file_name: str) -> Optional[str]:
                 return cat
 
     return None
-
-
-def url_download(download_directory: str, source: dict[str, Any], cur_logger, previous_update=None) -> list[str]:
-    if os.path.exists(download_directory):
-        shutil.rmtree(download_directory)
-    os.makedirs(download_directory)
-
-    name = source['name']
-    uri = source['uri']
-    username = source.get('username', None)
-    password = source.get('password', None)
-    ca_cert = source.get('ca_cert', None)
-    ignore_ssl_errors = source.get('ssl_ignore_errors', False)
-    auth = (username, password) if username and password else None
-
-    proxy = source.get('proxy', None)
-    headers = source.get('headers', None)
-
-    cur_logger.info(f"{name} source is configured to {'ignore SSL errors' if ignore_ssl_errors else 'verify SSL'}.")
-    if ca_cert:
-        cur_logger.info("A CA certificate has been provided with this source.")
-        add_cacert(ca_cert)
-
-    # Create a requests session
-    session = requests.Session()
-    session.verify = not ignore_ssl_errors
-
-    # Let https requests go through proxy
-    if proxy:
-        os.environ['https_proxy'] = proxy
-
-    try:
-        if isinstance(previous_update, str):
-            previous_update = iso_to_epoch(previous_update)
-
-        # Check the response header for the last modified date
-        response = session.head(uri, auth=auth, headers=headers)
-        last_modified = response.headers.get('Last-Modified', None)
-        if last_modified:
-            # Convert the last modified time to epoch
-            last_modified = time.mktime(time.strptime(last_modified, "%a, %d %b %Y %H:%M:%S %Z"))
-
-            # Compare the last modified time with the last updated time
-            if previous_update and last_modified <= previous_update:
-                # File has not been modified since last update, do nothing
-                cur_logger.info("The file has not been modified since last run, skipping...")
-                raise SkipSource()
-
-        if previous_update:
-            previous_update = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime(previous_update))
-            if headers:
-                headers['If-Modified-Since'] = previous_update
-            else:
-                headers = {'If-Modified-Since': previous_update}
-
-        response = session.get(uri, auth=auth, headers=headers)
-
-        # Check the response code
-        if response.status_code == requests.codes['not_modified']:
-            # File has not been modified since last update, do nothing
-            cur_logger.info("The file has not been modified since last run, skipping...")
-            raise SkipSource()
-        elif response.ok:
-            file_name = os.path.basename(f"{name}.yar")  # TODO: make filename as source name with extension .yar
-            file_path = os.path.join(download_directory, file_name)
-            with open(file_path, 'wb') as f:
-                f.write(response.content)
-
-            # Clear proxy setting
-            if proxy:
-                del os.environ['https_proxy']
-
-            # Return file_path
-            return [file_path]
-    except requests.Timeout:
-        # TODO: should we retry?
-        pass
-    except Exception as e:
-        # Catch all other types of exceptions such as ConnectionError, ProxyError, etc.
-        cur_logger.info(str(e))
-    finally:
-        # Close the requests session
-        session.close()
-    raise SkipSource()
-
-
-def git_clone_repo(download_directory: str, source: dict[str, Any], cur_logger,
-                   previous_update=None, branch=None) -> list[str]:
-    name = source['name']
-    url = source['uri']
-    pattern = source.get('pattern', None)
-    key = source.get('private_key', None)
-    username = source.get('username', None)
-    password = source.get('password', None)
-
-    ignore_ssl_errors = source.get("ssl_ignore_errors", False)
-    ca_cert = source.get("ca_cert")
-    proxy = source.get('proxy', None)
-
-    auth = f'{username}:{password}@' if username and password else None
-
-    git_config = None
-    git_env = {}
-    git_options = ['--single-branch']
-
-    if branch:
-        git_options.append(f'--branch {branch}')
-
-    # Let https requests go through proxy
-    if proxy:
-        os.environ['https_proxy'] = proxy
-
-    if ignore_ssl_errors:
-        git_env['GIT_SSL_NO_VERIFY'] = '1'
-
-    if ca_cert:
-        cur_logger.info(f"A CA certificate has been provided with this source.")
-        add_cacert(ca_cert)
-        git_env['GIT_SSL_CAINFO'] = certifi.where()
-
-    if key:
-        cur_logger.info(f"key found for {url}")
-        # Save the key to a file
-        git_ssh_identity_file = os.path.join(tempfile.gettempdir(), 'id_rsa')
-        if os.path.exists(git_ssh_identity_file):
-            os.unlink(git_ssh_identity_file)
-        with open(git_ssh_identity_file, 'w') as key_fh:
-            key_fh.write(key)
-        os.chmod(git_ssh_identity_file, 0o0400)
-
-        git_ssh_cmd = f"ssh -oStrictHostKeyChecking=no -i {git_ssh_identity_file}"
-        git_env['GIT_SSH_COMMAND'] = git_ssh_cmd
-
-    if auth:
-        cur_logger.info("Credentials provided for auth..")
-        url = re.sub(r'^(?P<scheme>https?://)', fr'\g<scheme>{auth}', url)
-
-    clone_dir = os.path.join(download_directory, name)
-    if os.path.exists(clone_dir):
-        shutil.rmtree(clone_dir)
-    os.makedirs(clone_dir)
-
-    repo = None
-    try:
-        repo = Repo.clone_from(url, clone_dir, env=git_env, multi_options=git_options, config=git_config)
-
-        if not isinstance(repo, Repo):
-            cur_logger.warning("Could not clone repository")
-            raise SkipSource()
-    except GitCommandError as e:
-        cur_logger.error(f"Problem cloning repo: {e}")
-        raise SkipSource()
-
-    # Check repo last commit
-    if previous_update:
-        if isinstance(previous_update, str):
-            previous_update = iso_to_epoch(previous_update)
-        for c in repo.iter_commits():
-            if c.committed_date < previous_update:
-                cur_logger.info("There are no new commits, skipping repository...")
-                raise SkipSource()
-            break
-
-    if pattern:
-        files = [os.path.join(dp, f)
-                 for dp, dn, filenames in os.walk(clone_dir)
-                 for f in filenames if re.match(pattern, f)]
-    else:
-        files = glob.glob(os.path.join(clone_dir, '*.yar*'))
-
-    if not files:
-        cur_logger.warning(f"Could not find any yara file matching pattern: {pattern or '*.yar*'}")
-
-    # Clear proxy setting
-    if proxy:
-        del os.environ['https_proxy']
-
-    return files
 
 
 def replace_include(include, dirname, processed_files: set[str], cur_logger: logging.Logger):
@@ -316,11 +121,9 @@ class YaraUpdateServer(ServiceUpdater):
 
                         try:
                             if uri.endswith('.git'):
-                                files = git_clone_repo(download_directory, source, self.log,
-                                                       previous_update=old_update_time)
+                                files = git_clone_repo(source, old_update_time, "*.yar*", self.log, download_directory)
                             else:
-                                files = url_download(download_directory, source, self.log,
-                                                     previous_update=old_update_time)
+                                files = url_download(source, old_update_time, self.log, download_directory)
                         except SkipSource:
                             if cache_name in previous_hashes:
                                 files_sha256[cache_name] = previous_hashes[cache_name]

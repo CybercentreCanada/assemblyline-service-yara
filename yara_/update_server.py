@@ -134,7 +134,7 @@ class YaraUpdateServer(ServiceUpdater):
                         # 2. Aggregate files
                         file_name = os.path.join(updater_working_dir, cache_name)
                         mode = "w"
-                        for file in files:
+                        for file, _ in files:
                             # File has already been processed before, skip it to avoid duplication of rules
                             if file in processed_files:
                                 continue

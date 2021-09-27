@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from assemblyline.common import forge
 from assemblyline.common.digests import get_sha256_for_file
+from assemblyline.common import log as al_log
 from assemblyline.odm.models.service import Service, UpdateSource
 from assemblyline_v4_service.updater.updater import ServiceUpdater, temporary_api_key
 from assemblyline_v4_service.updater.helper import git_clone_repo, url_download, SkipSource
@@ -17,6 +18,9 @@ from plyara import Plyara, utils
 
 from yara_.yara_importer import YaraImporter
 from yara_.yara_validator import YaraValidator
+
+al_log.init_logging('updater.yara', log_level=os.environ.get('LOG_LEVEL', "WARNING"))
+LOGGER = logging.getLogger('assemblyline.updater.yara')
 
 classification = forge.get_classification()
 
@@ -233,5 +237,5 @@ class YaraUpdateServer(ServiceUpdater):
 
 
 if __name__ == '__main__':
-    with YaraUpdateServer(updater_type='yara', externals=YARA_EXTERNALS) as server:
+    with YaraUpdateServer(updater_type='yara', externals=YARA_EXTERNALS, logger=LOGGER) as server:
         server.serve_forever()

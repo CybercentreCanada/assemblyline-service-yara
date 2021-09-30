@@ -216,7 +216,7 @@ class Yara(ServiceBase):
             'X_APIKEY': UPDATES_KEY
         }
 
-        # Check if there are new        
+        # Check if there are new
         while True:
             resp = requests.get(url_base + 'status')
             resp.raise_for_status()
@@ -258,18 +258,18 @@ class Yara(ServiceBase):
                 self.log.warning(f"{self.name} rules directory not found")
                 return None
 
-            try:
-                self.rules_directory = max([os.path.join(FILE_UPDATE_DIRECTORY, d)
-                                            for d in os.listdir(FILE_UPDATE_DIRECTORY)
-                                            if os.path.isdir(os.path.join(FILE_UPDATE_DIRECTORY, d))
-                                            and not d.startswith('.tmp')],
-                                            key=os.path.getctime)
-            except ValueError:
-                self.log.warning(f"No valid {self.name} rules directory found")
-                return None
-                
-            self.rules_hash = self._get_rules_hash()
-            self._load_rules()
+        try:
+            self.rules_directory = max([os.path.join(FILE_UPDATE_DIRECTORY, d)
+                                        for d in os.listdir(FILE_UPDATE_DIRECTORY)
+                                        if os.path.isdir(os.path.join(FILE_UPDATE_DIRECTORY, d))
+                                        and not d.startswith('.tmp')],
+                                       key=os.path.getctime)
+        except ValueError:
+            self.log.warning(f"No valid {self.name} rules directory found")
+            return None
+
+        self.rules_hash = self._get_rules_hash()
+        self._load_rules()
 
     def _add_resultinfo_for_match(self, result: Result, match):
         """
@@ -623,7 +623,7 @@ class Yara(ServiceBase):
 
     def _cleanup(self) -> None:
         super()._cleanup()
-        try: 
+        try:
             self._update_rules()
         except Exception as e:
             raise Exception(f"Something went wrong while trying to load {self.name} rules: {str(e)}")

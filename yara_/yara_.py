@@ -51,16 +51,11 @@ class Yara(ServiceBase):
         tl10=16,
     )
 
-    def __init__(self, config=None, name=None, externals=None):
+    def __init__(self, config=None, externals=None):
         super().__init__(config)
 
         if externals is None:
             externals = ['submitter', 'mime', 'file_type']
-
-        if name is None:
-            self.name = "Yara"
-        else:
-            self.name = name
 
         self.initialization_lock = threading.RLock()
         self.deep_scan = None
@@ -319,21 +314,15 @@ class Yara(ServiceBase):
         Load Yara rules files. This function will check the updates directory and try to load the latest set of
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
-        if not self.rules_list:
-            raise Exception(f"No valid {self.name} rules files found")
+        try:
+            rules = yara.compile(filepaths={os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list},
+                                 externals=self.yara_externals)
 
-        yar_files = {os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list}
-
-        if not yar_files:
-            raise Exception(f"No valid {self.name} rules files found")
-
-        rules = yara.compile(filepaths=yar_files, externals=self.yara_externals)
-
-        if rules:
-            with self.initialization_lock:
-                self.rules = rules
-                return True
-        raise Exception(f"No valid {self.name} rules files found")
+            if rules:
+                with self.initialization_lock:
+                    self.rules = rules
+        except Exception as e:
+            raise Exception(f"No valid {self.name} rules files found. Reason: {e}")
 
     # noinspection PyBroadException
     def execute(self, request):

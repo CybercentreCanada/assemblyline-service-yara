@@ -63,14 +63,9 @@ class Yara(ServiceBase):
             self.name = name
 
         self.initialization_lock = threading.RLock()
-        self.rules = None
-        self.rules_list = []
         self.deep_scan = None
 
-        # Load rules and externals
-        self.rules_directory = None
-        self.update_time = None
-        self.rules_hash = ''
+        # Load externals
         self.yara_externals = {f'al_{x.replace(".", "_")}': "" for x in externals}
 
         # Set configuration flags to 4 times the default
@@ -337,7 +332,7 @@ class Yara(ServiceBase):
         if rules:
             with self.initialization_lock:
                 self.rules = rules
-                return
+                return True
         raise Exception(f"No valid {self.name} rules files found")
 
     # noinspection PyBroadException

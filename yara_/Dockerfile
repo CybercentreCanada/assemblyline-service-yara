@@ -5,7 +5,7 @@ ENV YARA_VERSION='4.1.0'
 
 # Install runtime libraries we will need later
 USER root
-RUN apt-get update && apt-get install -y git libssl1.1 libmagic1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libssl1.1 libmagic1 && rm -rf /var/lib/apt/lists/*
 
 # Create a temporary image to do our compiling in
 FROM base AS build

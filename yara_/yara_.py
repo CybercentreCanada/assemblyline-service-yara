@@ -1,154 +1,17 @@
 import hashlib
 import json
 import os
-import shutil
 import threading
-import time
-import tempfile
-import tarfile
 from pathlib import Path
 from typing import List
 
 import yara
-import requests
 
-from assemblyline.common import forge
 from assemblyline.common.digests import get_sha256_for_file
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
-
-Classification = forge.get_classification()
-FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY', "/mount/updates/")
-UPDATES_HOST = os.environ.get('updates_host')
-UPDATES_PORT = os.environ.get('updates_port')
-UPDATES_KEY = os.environ.get('updates_key')
-
-
-class YaraMetadata(object):
-    MITRE_ATT_DEFAULTS = dict(
-        packer="T1045",
-        cryptography="T1032",
-        obfuscation="T1027",
-        keylogger="T1056",
-        shellcode="T1055"
-    )
-
-    def __init__(self, match):
-        meta = match.meta
-        self.name = match.rule
-        self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', None)))
-        self.category = meta.get('category', meta.get('rule_group', 'info')).lower()
-        self.malware_type = meta.get('malware_type', None)
-        self.version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
-        self.description = meta.get('description', None)
-        self.classification = meta.get('classification', meta.get('sharing', Classification.UNRESTRICTED))
-        self.source = meta.get('source', meta.get('organisation', None))
-        self.summary = meta.get('summary', meta.get('behavior', None))
-        self.author = meta.get('author', meta.get('poc', None))
-        self.status = meta.get('status', None)  # Status assigned by the rule creator
-        self.al_status = meta.get(self.status, meta.get('al_status', 'DEPLOYED'))
-        self.actor_type = meta.get('actor_type', meta.get('ta_type', meta.get('family', None)))
-        self.mitre_att = meta.get('mitre_att', meta.get("attack_id", None))
-        self.actor = meta.get('used_by', meta.get('actor', meta.get('threat_actor', meta.get('mitre_group', None))))
-        self.exploit = meta.get('exploit', None)
-        self.al_tag = meta.get('al_tag', None)
-
-        def _set_default_attack_id(key):
-            if self.mitre_att:
-                return self.mitre_att
-            if key in self.MITRE_ATT_DEFAULTS:
-                return self.MITRE_ATT_DEFAULTS[key]
-            return None
-
-        def _safe_split(comma_sep_list):
-            if comma_sep_list is None:
-                return []
-            return [e for e in comma_sep_list.split(',') if e]
-
-        # Specifics about the category
-        self.info = meta.get('info', None)
-        self.technique = meta.get('technique', None)
-        self.exploit = meta.get('exploit', None)
-        self.tool = meta.get('tool', None)
-        self.malware = meta.get('malware', meta.get('implant', None))
-
-        self.actors = _safe_split(self.actor)
-        self.behavior = set(_safe_split(meta.get('summary', None)))
-        self.exploits = _safe_split(self.exploit)
-
-        # Parse and populate tag list
-        self.tags = []
-        if self.al_tag:
-            if ',' in self.malware:
-                for al_tag in self.al_tag.split(','):
-                    tokens = al_tag.split(':')
-                    if len(tokens) == 2:
-                        self.tags.append({"type": tokens[0], 'value': tokens[1]})
-
-            else:
-                tokens = self.al_tag.split(':')
-                if len(tokens) == 2:
-                    self.tags.append({"type": tokens[0], 'value': tokens[1]})
-
-        # Parse and populate malware list
-        self.malwares = []
-        if self.malware:
-            if ',' in self.malware:
-                for malware in self.malware.split(','):
-                    tokens = malware.split(':')
-                    malware_name = tokens[0]
-                    malware_family = tokens[1] if (len(tokens) == 2) else ''
-                    self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
-            else:
-                tokens = self.malware.split(':')
-                malware_name = tokens[0]
-                malware_family = tokens[1] if (len(tokens) == 2) else self.malware_type or ''
-                self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
-
-        # Parse and populate technique info
-        self.techniques = []
-        if self.technique:
-            if ',' in self.technique:
-                for technique in self.technique.split(','):
-                    tokens = technique.split(':')
-                    category = ''
-                    if len(tokens) == 2:
-                        category = tokens[0]
-                        name = tokens[1]
-                        self.mitre_att = _set_default_attack_id(category)
-                    else:
-                        name = tokens[0]
-                    self.techniques.append((category.strip(), name.strip()))
-            else:
-                tokens = self.technique.split(':')
-                category = ''
-                if len(tokens) == 2:
-                    category = tokens[0]
-                    name = tokens[1]
-                    self.mitre_att = _set_default_attack_id(category)
-                else:
-                    name = tokens[0]
-                self.techniques.append((category.strip(), name.strip()))
-
-        # Parse and populate info
-        self.infos = []
-        if self.info:
-            if ',' in self.info:
-                for info in self.info.split(','):
-                    tokens = info.split(':', 1)
-                    if len(tokens) == 2:
-                        # category, value
-                        self.infos.append((tokens[0], tokens[1]))
-                    else:
-                        self.infos.append((None, tokens[0]))
-            else:
-                tokens = self.info.split(':', 1)
-                if len(tokens) == 2:
-                    # category, value
-                    self.infos.append((tokens[0], tokens[1]))
-                else:
-                    self.infos.append((None, tokens[0]))
+from yara_.helper import YaraMetadata
 
 
 class Yara(ServiceBase):
@@ -210,66 +73,11 @@ class Yara(ServiceBase):
         self.rules_hash = ''
         self.yara_externals = {f'al_{x.replace(".", "_")}': "" for x in externals}
 
-    def _download_rules(self):
-        url_base = f'http://{UPDATES_HOST}:{UPDATES_PORT}/'
-        headers = {
-            'X_APIKEY': UPDATES_KEY
-        }
+        # Set configuration flags to 4 times the default
+        yara.set_config(max_strings_per_rule=40000, stack_size=65536)
 
-        # Check if there are new
-        while True:
-            resp = requests.get(url_base + 'status')
-            resp.raise_for_status()
-            status = resp.json()
-            if self.update_time is not None and self.update_time >= status['local_update_time']:
-                return False
-            if status['download_available']:
-                break
-            self.log.warning('Waiting on update server availability...')
-            time.sleep(10)
-
-        # Download the current update
-        temp_directory = tempfile.mkdtemp()
-        buffer_handle, buffer_name = tempfile.mkstemp()
-        try:
-            with os.fdopen(buffer_handle, 'wb') as buffer:
-                resp = requests.get(url_base + 'tar', headers=headers)
-                resp.raise_for_status()
-                for chunk in resp.iter_content(chunk_size=1024):
-                    buffer.write(chunk)
-
-            tar_handle = tarfile.open(buffer_name)
-            tar_handle.extractall(temp_directory)
-            self.update_time = status['local_update_time']
-            self.rules_directory, temp_directory = temp_directory, self.rules_directory
-            return True
-        finally:
-            os.unlink(buffer_name)
-            if temp_directory is not None:
-                shutil.rmtree(temp_directory, ignore_errors=True)
-
-    def _update_rules(self):
-        try:
-            if self._download_rules():
-                self.rules_hash = self._get_rules_hash()
-                self._load_rules()
-        except Exception:
-            if not os.path.exists(FILE_UPDATE_DIRECTORY):
-                self.log.warning(f"{self.name} rules directory not found")
-                return None
-
-        try:
-            self.rules_directory = max([os.path.join(FILE_UPDATE_DIRECTORY, d)
-                                        for d in os.listdir(FILE_UPDATE_DIRECTORY)
-                                        if os.path.isdir(os.path.join(FILE_UPDATE_DIRECTORY, d))
-                                        and not d.startswith('.tmp')],
-                                       key=os.path.getctime)
-        except ValueError:
-            self.log.warning(f"No valid {self.name} rules directory found")
-            return None
-
-        self.rules_hash = self._get_rules_hash()
-        self._load_rules()
+    def start(self):
+        self.log.info(f"{self.name} started with service version: {self.get_service_version()}")
 
     def _add_resultinfo_for_match(self, result: Result, match):
         """
@@ -511,7 +319,7 @@ class Yara(ServiceBase):
 
         return hashlib.sha256(' '.join(sorted(all_sha256s)).encode('utf-8')).hexdigest()[:7]
 
-    def _load_rules(self):
+    def _load_rules(self) -> None:
         """
         Load Yara rules files. This function will check the updates directory and try to load the latest set of
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
@@ -608,22 +416,3 @@ class Yara(ServiceBase):
             return f'{basic_version}.r{self.rules_hash}'
         else:
             return basic_version
-
-    def start(self):
-        # Set configuration flags to 4 times the default
-        yara.set_config(max_strings_per_rule=40000, stack_size=65536)
-
-        try:
-            # Load the rules
-            self._update_rules()
-        except Exception as e:
-            raise Exception(f"Something went wrong while trying to load {self.name} rules: {str(e)}")
-
-        self.log.info(f"{self.name} started with service version: {self.get_service_version()}")
-
-    def _cleanup(self) -> None:
-        super()._cleanup()
-        try:
-            self._update_rules()
-        except Exception as e:
-            raise Exception(f"Something went wrong while trying to load {self.name} rules: {str(e)}")

@@ -1,13 +1,10 @@
-import hashlib
 import json
 import os
 import threading
-from pathlib import Path
 from typing import List
 
 import yara
 
-from assemblyline.common.digests import get_sha256_for_file
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
@@ -297,17 +294,6 @@ class Yara(ServiceBase):
     def _normalize_metadata(almeta):
         """Convert classification to uppercase."""
         almeta.classification = almeta.classification.upper()
-
-    def _get_rules_hash(self):
-        self.rules_list = [str(f) for f in Path(self.rules_directory).rglob("*") if os.path.isfile(str(f))]
-        all_sha256s = [get_sha256_for_file(f) for f in self.rules_list]
-
-        self.log.info(f"{self.name} will load the following rule files: {self.rules_list}")
-
-        if len(all_sha256s) == 1:
-            return all_sha256s[0][:7]
-
-        return hashlib.sha256(' '.join(sorted(all_sha256s)).encode('utf-8')).hexdigest()[:7]
 
     def _load_rules(self) -> None:
         """

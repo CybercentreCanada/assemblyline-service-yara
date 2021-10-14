@@ -5,12 +5,12 @@ ENV YARA_VERSION='4.1.0'
 
 # Install runtime libraries we will need later
 USER root
-RUN apt-get update && apt-get install -y git libssl1.1 libmagic1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libssl1.1 libmagic1 && rm -rf /var/lib/apt/lists/*
 
 # Create a temporary image to do our compiling in
 FROM base AS build
 
-RUN apt-get update && apt-get install -y git libssl-dev libmagic-dev automake libtool pkg-config make gcc wget  && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libssl-dev libmagic-dev automake libtool pkg-config make gcc wget  && rm -rf /var/lib/apt/lists/*
 
 # Compile and install YARA
 RUN wget -O /tmp/yara.tar.gz https://github.com/VirusTotal/yara/archive/v${YARA_VERSION}.tar.gz
@@ -24,7 +24,7 @@ RUN make install
 # Build the yara python plugins
 USER assemblyline
 RUN touch /tmp/before-pip
-RUN pip install --no-cache-dir --user gitpython plyara
+RUN pip install --no-cache-dir --user plyara
 RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" yara-python==${YARA_VERSION}
 RUN rm -rf ~/.cache/pip
 

@@ -1,146 +1,14 @@
-import hashlib
 import json
 import os
 import threading
-from pathlib import Path
 from typing import List
 
 import yara
 
-from assemblyline.common import forge
-from assemblyline.common.digests import get_sha256_for_file
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
-
-Classification = forge.get_classification()
-FILE_UPDATE_DIRECTORY = os.environ.get('FILE_UPDATE_DIRECTORY', "/mount/updates/")
-
-
-class YaraMetadata(object):
-    MITRE_ATT_DEFAULTS = dict(
-        packer="T1045",
-        cryptography="T1032",
-        obfuscation="T1027",
-        keylogger="T1056",
-        shellcode="T1055"
-    )
-
-    def __init__(self, match):
-        meta = match.meta
-        self.name = match.rule
-        self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', None)))
-        self.category = meta.get('category', meta.get('rule_group', 'info')).lower()
-        self.malware_type = meta.get('malware_type', None)
-        self.version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
-        self.description = meta.get('description', None)
-        self.classification = meta.get('classification', meta.get('sharing', Classification.UNRESTRICTED))
-        self.source = meta.get('source', meta.get('organisation', None))
-        self.summary = meta.get('summary', meta.get('behavior', None))
-        self.author = meta.get('author', meta.get('poc', None))
-        self.status = meta.get('status', None)  # Status assigned by the rule creator
-        self.al_status = meta.get(self.status, meta.get('al_status', 'DEPLOYED'))
-        self.actor_type = meta.get('actor_type', meta.get('ta_type', meta.get('family', None)))
-        self.mitre_att = meta.get('mitre_att', meta.get("attack_id", None))
-        self.actor = meta.get('used_by', meta.get('actor', meta.get('threat_actor', meta.get('mitre_group', None))))
-        self.exploit = meta.get('exploit', None)
-        self.al_tag = meta.get('al_tag', None)
-
-        def _set_default_attack_id(key):
-            if self.mitre_att:
-                return self.mitre_att
-            if key in self.MITRE_ATT_DEFAULTS:
-                return self.MITRE_ATT_DEFAULTS[key]
-            return None
-
-        def _safe_split(comma_sep_list):
-            if comma_sep_list is None:
-                return []
-            return [e for e in comma_sep_list.split(',') if e]
-
-        # Specifics about the category
-        self.info = meta.get('info', None)
-        self.technique = meta.get('technique', None)
-        self.exploit = meta.get('exploit', None)
-        self.tool = meta.get('tool', None)
-        self.malware = meta.get('malware', meta.get('implant', None))
-
-        self.actors = _safe_split(self.actor)
-        self.behavior = set(_safe_split(meta.get('summary', None)))
-        self.exploits = _safe_split(self.exploit)
-
-        # Parse and populate tag list
-        self.tags = []
-        if self.al_tag:
-            if ',' in self.malware:
-                for al_tag in self.al_tag.split(','):
-                    tokens = al_tag.split(':')
-                    if len(tokens) == 2:
-                        self.tags.append({"type": tokens[0], 'value': tokens[1]})
-
-            else:
-                tokens = self.al_tag.split(':')
-                if len(tokens) == 2:
-                    self.tags.append({"type": tokens[0], 'value': tokens[1]})
-
-        # Parse and populate malware list
-        self.malwares = []
-        if self.malware:
-            if ',' in self.malware:
-                for malware in self.malware.split(','):
-                    tokens = malware.split(':')
-                    malware_name = tokens[0]
-                    malware_family = tokens[1] if (len(tokens) == 2) else ''
-                    self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
-            else:
-                tokens = self.malware.split(':')
-                malware_name = tokens[0]
-                malware_family = tokens[1] if (len(tokens) == 2) else self.malware_type or ''
-                self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
-
-        # Parse and populate technique info
-        self.techniques = []
-        if self.technique:
-            if ',' in self.technique:
-                for technique in self.technique.split(','):
-                    tokens = technique.split(':')
-                    category = ''
-                    if len(tokens) == 2:
-                        category = tokens[0]
-                        name = tokens[1]
-                        self.mitre_att = _set_default_attack_id(category)
-                    else:
-                        name = tokens[0]
-                    self.techniques.append((category.strip(), name.strip()))
-            else:
-                tokens = self.technique.split(':')
-                category = ''
-                if len(tokens) == 2:
-                    category = tokens[0]
-                    name = tokens[1]
-                    self.mitre_att = _set_default_attack_id(category)
-                else:
-                    name = tokens[0]
-                self.techniques.append((category.strip(), name.strip()))
-
-        # Parse and populate info
-        self.infos = []
-        if self.info:
-            if ',' in self.info:
-                for info in self.info.split(','):
-                    tokens = info.split(':', 1)
-                    if len(tokens) == 2:
-                        # category, value
-                        self.infos.append((tokens[0], tokens[1]))
-                    else:
-                        self.infos.append((None, tokens[0]))
-            else:
-                tokens = self.info.split(':', 1)
-                if len(tokens) == 2:
-                    # category, value
-                    self.infos.append((tokens[0], tokens[1]))
-                else:
-                    self.infos.append((None, tokens[0]))
+from yara_.helper import YaraMetadata
 
 
 class Yara(ServiceBase):
@@ -180,25 +48,23 @@ class Yara(ServiceBase):
         tl10=16,
     )
 
-    def __init__(self, config=None, name=None, externals=None):
+    def __init__(self, config=None, externals=None):
         super().__init__(config)
 
         if externals is None:
             externals = ['submitter', 'mime', 'file_type']
 
-        if name is None:
-            self.name = "Yara"
-        else:
-            self.name = name
-
         self.initialization_lock = threading.RLock()
-        self.rules = None
-        self.rules_list = []
         self.deep_scan = None
 
-        # Load rules and externals
-        self.rules_hash = self._get_rules_hash()
+        # Load externals
         self.yara_externals = {f'al_{x.replace(".", "_")}': "" for x in externals}
+
+        # Set configuration flags to 4 times the default
+        yara.set_config(max_strings_per_rule=40000, stack_size=65536)
+
+    def start(self):
+        self.log.info(f"{self.name} started with service version: {self.get_service_version()}")
 
     def _add_resultinfo_for_match(self, result: Result, match):
         """
@@ -429,51 +295,20 @@ class Yara(ServiceBase):
         """Convert classification to uppercase."""
         almeta.classification = almeta.classification.upper()
 
-    def _get_rules_hash(self):
-        if not os.path.exists(FILE_UPDATE_DIRECTORY):
-            self.log.warning(f"{self.name} rules directory not found")
-            return None
-
-        try:
-            rules_directory = max([os.path.join(FILE_UPDATE_DIRECTORY, d)
-                                   for d in os.listdir(FILE_UPDATE_DIRECTORY)
-                                   if os.path.isdir(os.path.join(FILE_UPDATE_DIRECTORY, d))
-                                   and not d.startswith('.tmp')],
-                                  key=os.path.getctime)
-        except ValueError:
-            self.log.warning(f"No valid {self.name} rules directory found")
-            return None
-
-        self.rules_list = [str(f) for f in Path(rules_directory).rglob("*") if os.path.isfile(str(f))]
-        all_sha256s = [get_sha256_for_file(f) for f in self.rules_list]
-
-        self.log.info(f"{self.name} will load the following rule files: {self.rules_list}")
-
-        if len(all_sha256s) == 1:
-            return all_sha256s[0][:7]
-
-        return hashlib.sha256(' '.join(sorted(all_sha256s)).encode('utf-8')).hexdigest()[:7]
-
-    def _load_rules(self):
+    def _load_rules(self) -> None:
         """
         Load Yara rules files. This function will check the updates directory and try to load the latest set of
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
-        if not self.rules_list:
-            raise Exception(f"No valid {self.name} rules files found")
+        try:
+            rules = yara.compile(filepaths={os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list},
+                                 externals=self.yara_externals)
 
-        yar_files = {os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list}
-
-        if not yar_files:
-            raise Exception(f"No valid {self.name} rules files found")
-
-        rules = yara.compile(filepaths=yar_files, externals=self.yara_externals)
-
-        if rules:
-            with self.initialization_lock:
-                self.rules = rules
-                return
-        raise Exception(f"No valid {self.name} rules files found")
+            if rules:
+                with self.initialization_lock:
+                    self.rules = rules
+        except Exception as e:
+            raise Exception(f"No valid {self.name} rules files found. Reason: {e}")
 
     # noinspection PyBroadException
     def execute(self, request):
@@ -551,16 +386,3 @@ class Yara(ServiceBase):
             return f'{basic_version}.r{self.rules_hash}'
         else:
             return basic_version
-
-    def start(self):
-        # Set configuration flags to 4 times the default
-        yara.set_config(max_strings_per_rule=40000, stack_size=65536)
-
-        try:
-            # Load the rules
-            self._load_rules()
-
-        except Exception as e:
-            raise Exception(f"Something went wrong while trying to load {self.name} rules: {str(e)}")
-
-        self.log.info(f"{self.name} started with service version: {self.get_service_version()}")

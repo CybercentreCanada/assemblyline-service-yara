@@ -307,6 +307,8 @@ class Yara(ServiceBase):
             if rules:
                 with self.initialization_lock:
                     self.rules = rules
+            else:
+                raise Exception("yara.compile() didn't output any rules. Check if service can reach the updater.")
         except Exception as e:
             raise Exception(f"No valid {self.name} rules files found. Reason: {e}")
 

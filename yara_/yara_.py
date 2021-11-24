@@ -380,11 +380,4 @@ class Yara(ServiceBase):
         Return the version of yara used for processing
         :return:
         """
-        return yara.YARA_VERSION
-
-    def get_service_version(self):
-        basic_version = super().get_service_version()
-        if self.rules_hash and self.rules_hash not in basic_version:
-            return f'{basic_version}.r{self.rules_hash}'
-        else:
-            return basic_version
+        return f'{yara.YARA_VERSION}.r{self.rules_hash}'

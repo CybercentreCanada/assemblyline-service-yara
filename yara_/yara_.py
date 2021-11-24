@@ -318,7 +318,7 @@ class Yara(ServiceBase):
         if not self.rules:
             return
 
-        request.set_service_context(f"{self.name} version: {self.get_tool_version()}")
+        request.set_service_context(f"{self.name} version: {self.get_yara_version()}")
 
         self.deep_scan = request.task.deep_scan
         local_filename = request.file_path
@@ -375,9 +375,12 @@ class Yara(ServiceBase):
                         section.add_line("File returned too many matches with current rule set and YARA exited.")
                         request.result = result
 
+    def get_yara_version(self):
+        return yara.YARA_VERSION
+
     def get_tool_version(self):
         """
         Return the version of yara used for processing
         :return:
         """
-        return f'{yara.YARA_VERSION}.r{self.rules_hash}'
+        return f'{self.get_yara_version()}.r{self.rules_hash}'

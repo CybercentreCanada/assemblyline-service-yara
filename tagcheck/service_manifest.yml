@@ -16,6 +16,10 @@ enabled: true
 is_external: false
 licence_count: 0
 
+uses_tags: true
+uses_metadata: true
+uses_temp_submission_data: true
+
 heuristics:
   - heur_id: 1
     name: Info

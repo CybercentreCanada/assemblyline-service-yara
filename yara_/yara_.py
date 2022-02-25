@@ -2,7 +2,7 @@ import json
 import os
 import threading
 from typing import List
-
+from plyara import Plyara
 import yara
 
 from assemblyline.common.str_utils import safe_str
@@ -78,16 +78,19 @@ class Yara(ServiceBase):
         Returns:
             None.
         """
-        almeta = YaraMetadata(match)
+        rule_meta = Plyara().parse_string(open(match.namespace, 'r').read())[0]['metadata']
+        almeta = YaraMetadata(match, rule_meta)
         self._normalize_metadata(almeta)
 
         section = ResultSection('', classification=almeta.classification)
+        # Immediate parent should be the source where the rule originated from
+        rule_source = os.path.basename(os.path.dirname(match.namespace))
         if self.deep_scan or almeta.al_status != "NOISY":
             section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1),
-                                  signature=f'{match.namespace}.{match.rule}', attack_id=almeta.mitre_att)
-        section.add_tag(f'file.rule.{self.name.lower()}', f'{match.namespace}.{match.rule}')
+                                  signature=f'{rule_source}.{match.rule}', attack_id=almeta.mitre_att)
+        section.add_tag(f'file.rule.{self.name.lower()}', f'{rule_source}.{match.rule}')
 
-        title_elements = [f"[{match.namespace}] {match.rule}", ]
+        title_elements = [f"[{rule_source}] {match.rule}", ]
 
         if almeta.actor_type:
             section.add_tag('attribution.actor', almeta.actor_type)
@@ -145,8 +148,10 @@ class Yara(ServiceBase):
         json_body = dict(
             name=match.rule,
         )
+        if almeta.malware:
+            json_body['malware'] = almeta.malware.split(',')
 
-        for item in ['id', 'version', 'author', 'description', 'source', 'malware', 'info',
+        for item in ['id', 'version', 'author', 'description', 'source', 'info',
                      'technique', 'tool', 'exploit', 'actor', 'category', 'mitre_att']:
             val = almeta.__dict__.get(item, None)
             if val:
@@ -301,7 +306,7 @@ class Yara(ServiceBase):
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
         try:
-            rules = yara.compile(filepaths={os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list},
+            rules = yara.compile(filepaths={yf: yf for yf in self.rules_list},
                                  externals=self.yara_externals)
 
             if rules:

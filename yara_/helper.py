@@ -9,6 +9,7 @@ from assemblyline.common import forge
 from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.signature import Signature
 
+from collections import defaultdict
 from plyara import Plyara, utils
 
 DEFAULT_STATUS = "DEPLOYED"
@@ -250,7 +251,7 @@ class YaraMetadata(object):
         shellcode="T1055"
     )
 
-    def __init__(self, match):
+    def __init__(self, match, rule_meta):
         meta = match.meta
         self.name = match.rule
         self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', None)))
@@ -282,13 +283,20 @@ class YaraMetadata(object):
                 return []
             return [e for e in comma_sep_list.split(',') if e]
 
+        # Parse metadata from rule source in a nice format
+        rule_meta_dict = defaultdict(list)
+        for item in rule_meta:
+            for k, v in item.items():
+                rule_meta_dict[k].append(v)
+
         # Specifics about the category
         self.info = meta.get('info', None)
         self.technique = meta.get('technique', None)
         self.exploit = meta.get('exploit', None)
         self.tool = meta.get('tool', None)
         self.malware = meta.get('malware', meta.get('implant', None))
-
+        if self.malware:
+            self.malware = ','.join(rule_meta_dict.get('malware', [self.malware]))
         self.actors = _safe_split(self.actor)
         self.behavior = set(_safe_split(meta.get('summary', None)))
         self.exploits = _safe_split(self.exploit)

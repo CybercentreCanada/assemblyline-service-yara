@@ -172,5 +172,6 @@ update_config:
     - name: webshells
       pattern: ^webshells_index.yar$
       uri: https://github.com/Yara-Rules/rules.git
+  signature_delimiter: file
   update_interval_seconds: 86400 # 24 hours
   wait_for_update: false

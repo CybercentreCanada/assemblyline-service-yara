@@ -13,6 +13,7 @@ from plyara import Plyara, utils
 
 DEFAULT_STATUS = "DEPLOYED"
 Classification = forge.get_classification()
+YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'file_type', 'tag']}
 
 
 class YaraImporter(object):

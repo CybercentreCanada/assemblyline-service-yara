@@ -9,10 +9,9 @@ from assemblyline.common import forge
 from assemblyline_v4_service.updater.updater import ServiceUpdater
 
 from plyara import Plyara, utils
-from yara_.helper import YaraImporter, YaraValidator
+from yara_.helper import YaraImporter, YaraValidator, YARA_EXTERNALS
 
 classification = forge.get_classification()
-YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'tag']}
 
 
 def _compile_rules(rules_file, externals, logger: logging.Logger):

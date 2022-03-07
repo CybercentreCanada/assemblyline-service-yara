@@ -8,7 +8,7 @@ import yara
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
-from yara_.helper import YaraMetadata
+from yara_.helper import YaraMetadata, YARA_EXTERNALS
 
 
 class Yara(ServiceBase):
@@ -52,7 +52,7 @@ class Yara(ServiceBase):
         super().__init__(config)
 
         if externals is None:
-            externals = ['submitter', 'mime', 'file_type']
+            externals = YARA_EXTERNALS
 
         self.initialization_lock = threading.RLock()
         self.deep_scan = None

@@ -1,7 +1,7 @@
 ARG branch=latest
 FROM cccs/assemblyline-v4-service-base:$branch AS base
 ENV SERVICE_PATH yara_.yara_.Yara
-ENV YARA_VERSION='4.1.3'
+ENV YARA_VERSION='4.2.0'
 
 # Install runtime libraries we will need later
 USER root

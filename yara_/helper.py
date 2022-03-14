@@ -291,7 +291,9 @@ class YaraMetadata(object):
         self.technique = meta.get('technique', None)
         self.exploit = meta.get('exploit', None)
         self.tool = meta.get('tool', None)
-        self.malware = ",".join(meta.get('malware', meta.get('implant', [])))
+        self.malware = meta.get('malware', meta.get('implant', []))
+        if isinstance(self.malware, list):
+            self.malware = ",".join(self.malware)
 
         self.actors = _safe_split(self.actor)
         self.behavior = set(_safe_split(meta.get('summary', None)))

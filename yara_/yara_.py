@@ -353,7 +353,7 @@ class Yara(ServiceBase):
 
         with self.initialization_lock:
             try:
-                matches = self.rules.match(local_filename, externals=yara_externals)
+                matches = self.rules.match(local_filename, externals=yara_externals, allow_duplicate_metadata=True)
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
                 # Internal error 30 == exceeded max string matches on rule

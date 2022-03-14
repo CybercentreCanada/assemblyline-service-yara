@@ -252,6 +252,10 @@ class YaraMetadata(object):
 
     def __init__(self, match):
         meta = match.meta
+        for k, v in meta.items():
+            if len(v) == 1:
+                meta[k] = v[0]
+
         self.name = match.rule
         self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', None)))
         self.category = meta.get('category', meta.get('rule_group', 'info')).lower()
@@ -287,7 +291,7 @@ class YaraMetadata(object):
         self.technique = meta.get('technique', None)
         self.exploit = meta.get('exploit', None)
         self.tool = meta.get('tool', None)
-        self.malware = meta.get('malware', meta.get('implant', None))
+        self.malware = ",".join(meta.get('malware', meta.get('implant', [])))
 
         self.actors = _safe_split(self.actor)
         self.behavior = set(_safe_split(meta.get('summary', None)))

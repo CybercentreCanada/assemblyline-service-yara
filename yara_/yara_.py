@@ -7,7 +7,7 @@ import yara
 
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.base import ServiceBase
-from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
+from assemblyline_v4_service.common.result import Heuristic, Result, ResultSection, BODY_FORMAT
 from yara_.helper import YaraMetadata, YARA_EXTERNALS
 
 
@@ -82,10 +82,16 @@ class Yara(ServiceBase):
         self._normalize_metadata(almeta)
 
         section = ResultSection('', classification=almeta.classification)
+        heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1))
+        sig = f'{match.namespace}.{match.rule}'
+
+        # Allow the al_score meta in a YARA rule to override default scoring
+        if almeta.al_score:
+            heur.score_map = {sig: almeta.al_score}
+
         if self.deep_scan or almeta.al_status != "NOISY":
-            section.set_heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1),
-                                  signature=f'{match.namespace}.{match.rule}', attack_id=almeta.mitre_att)
-        section.add_tag(f'file.rule.{self.name.lower()}', f'{match.namespace}.{match.rule}')
+            section.set_heuristic(heur, signature=sig, attack_id=almeta.mitre_att)
+        section.add_tag(f'file.rule.{self.name.lower()}', sig)
 
         title_elements = [f"[{match.namespace}] {match.rule}", ]
 

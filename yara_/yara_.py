@@ -82,12 +82,10 @@ class Yara(ServiceBase):
         self._normalize_metadata(almeta)
 
         section = ResultSection('', classification=almeta.classification)
-        heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1))
-        sig = f'{match.namespace}.{match.rule}'
-
         # Allow the al_score meta in a YARA rule to override default scoring
-        if almeta.al_score:
-            heur.score_map = {sig: almeta.al_score}
+        score_map = {sig: almeta.al_score} if almeta.al_score else None
+        heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1), score_map=score_map)
+        sig = f'{match.namespace}.{match.rule}'
 
         if self.deep_scan or almeta.al_status != "NOISY":
             section.set_heuristic(heur, signature=sig, attack_id=almeta.mitre_att)

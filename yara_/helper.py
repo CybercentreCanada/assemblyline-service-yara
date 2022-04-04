@@ -13,6 +13,7 @@ from plyara import Plyara, utils
 
 DEFAULT_STATUS = "DEPLOYED"
 Classification = forge.get_classification()
+YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'file_type', 'tag']}
 
 
 class YaraImporter(object):
@@ -273,6 +274,7 @@ class YaraMetadata(object):
         self.actor = meta.get('used_by', meta.get('actor', meta.get('threat_actor', meta.get('mitre_group', None))))
         self.exploit = meta.get('exploit', None)
         self.al_tag = meta.get('al_tag', None)
+        self.al_score = meta.get('al_score', None)
 
         def _set_default_attack_id(key):
             if self.mitre_att:

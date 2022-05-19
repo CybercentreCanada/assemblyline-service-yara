@@ -25,6 +25,8 @@ RUN make install
 USER assemblyline
 RUN touch /tmp/before-pip
 RUN pip install --no-cache-dir --user plyara
+# Don't use the version of yara-python from assemblyline-base
+RUN pip uninstall -y yara-python
 # Pending PR: https://github.com/VirusTotal/yara-python/pull/201
 #RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" --global-option="--enable-magic" yara-python==${YARA_VERSION}
 RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" --global-option="--enable-magic" git+https://github.com/cccs-rs/yara-python

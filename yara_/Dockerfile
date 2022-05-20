@@ -3,6 +3,10 @@ FROM cccs/assemblyline-v4-service-base:$branch AS base
 ENV SERVICE_PATH yara_.yara_.Yara
 ENV YARA_VERSION='4.2.0'
 
+# Don't use the version of yara-python from assemblyline-base
+USER assemblyline
+RUN pip uninstall -y yara-python
+
 # Install runtime libraries we will need later
 USER root
 RUN apt-get update && apt-get install -y libssl1.1 libmagic1 && rm -rf /var/lib/apt/lists/*
@@ -25,11 +29,7 @@ RUN make install
 USER assemblyline
 RUN touch /tmp/before-pip
 RUN pip install --no-cache-dir --user plyara
-# Don't use the version of yara-python from assemblyline-base
-RUN pip uninstall -y yara-python
-# Pending PR: https://github.com/VirusTotal/yara-python/pull/201
-#RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" --global-option="--enable-magic" yara-python==${YARA_VERSION}
-RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" --global-option="--enable-magic" git+https://github.com/cccs-rs/yara-python
+RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" --global-option="--enable-magic" git+https://github.com/VirusTotal/yara-python.git
 RUN rm -rf ~/.cache/pip
 
 # Remove files that existed before the pip install so that our copy command below doesn't take a snapshot of

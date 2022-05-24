@@ -82,7 +82,6 @@ class Yara(ServiceBase):
         """
         almeta = YaraMetadata(match)
         self._normalize_metadata(almeta)
-        ont_data = {'type': 'YARA', 'name': match.rule, 'attributes': {'file_hash': self.sha256}}
         actors = []
         attacks = []
         malware_families = []
@@ -95,6 +94,9 @@ class Yara(ServiceBase):
         score_map = {sig: almeta.al_score} if almeta.al_score else None
         heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1), score_map=score_map)
         sig = f'{match.namespace}.{match.rule}'
+
+        # Barebones of YARA signature ontology
+        ont_data = {'type': 'YARA', 'name': sig, 'attributes': {'file_hash': self.sha256}}
 
         if self.deep_scan or almeta.al_status != "NOISY":
             section.set_heuristic(heur, signature=sig, attack_id=almeta.mitre_att)
@@ -174,7 +176,7 @@ class Yara(ServiceBase):
         section.set_body(json.dumps(json_body), body_format=BODY_FORMAT.KEY_VALUE)
 
         # Update Signature ontology data and append to collection
-        ont_data.update(dict(attack=attacks, actor=actors, malware_family=malware_families))
+        ont_data.update(dict(attack=attacks or None, actor=actors or None, malware_family=malware_families or None))
         self.ontology.add_result_part(Signature, ont_data)
         result.add_section(section)
         # result.order_results_by_score() TODO: should v4 support this?

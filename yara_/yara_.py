@@ -96,7 +96,7 @@ class Yara(ServiceBase):
         sig = f'{match.namespace}.{match.rule}'
 
         # Barebones of YARA signature ontology
-        ont_data = {'type': 'YARA', 'name': sig, 'attributes': {'file_hash': self.sha256}}
+        ont_data = {'type': 'YARA', 'name': sig, 'attributes': [{'file_hash': self.sha256}]}
 
         if self.deep_scan or almeta.al_status != "NOISY":
             section.set_heuristic(heur, signature=sig, attack_id=almeta.mitre_att)

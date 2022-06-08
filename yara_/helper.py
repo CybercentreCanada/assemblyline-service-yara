@@ -304,30 +304,20 @@ class YaraMetadata(object):
         # Parse and populate tag list
         self.tags = []
         if self.al_tag:
-            if ',' in self.malware:
-                for al_tag in self.al_tag.split(','):
-                    tokens = al_tag.split(':')
-                    if len(tokens) == 2:
-                        self.tags.append({"type": tokens[0], 'value': tokens[1]})
-
-            else:
-                tokens = self.al_tag.split(':')
+            tags = self.al_tag.split(',') if isinstance(self.al_tag, str) else self.al_tag
+            for tag in tags:
+                tokens = tag.split(':')
                 if len(tokens) == 2:
                     self.tags.append({"type": tokens[0], 'value': tokens[1]})
 
         # Parse and populate malware list
         self.malwares = []
         if self.malware:
-            if ',' in self.malware:
-                for malware in self.malware.split(','):
-                    tokens = malware.split(':')
-                    malware_name = tokens[0]
-                    malware_family = tokens[1] if (len(tokens) == 2) else ''
-                    self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
-            else:
-                tokens = self.malware.split(':')
+            malwares = self.malware.split(',') if isinstance(self.malware, str) else self.malware
+            for malware in malwares:
+                tokens = malware.split(':')
                 malware_name = tokens[0]
-                malware_family = tokens[1] if (len(tokens) == 2) else self.malware_type or ''
+                malware_family = tokens[1] if (len(tokens) == 2) else ''
                 self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
 
         # Parse and populate technique info

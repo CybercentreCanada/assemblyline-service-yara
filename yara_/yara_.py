@@ -91,9 +91,9 @@ class Yara(ServiceBase):
 
         section = ResultSection('', classification=almeta.classification)
         # Allow the al_score meta in a YARA rule to override default scoring
+        sig = f'{match.namespace}.{match.rule}'
         score_map = {sig: almeta.al_score} if almeta.al_score else None
         heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1), score_map=score_map)
-        sig = f'{match.namespace}.{match.rule}'
 
         # Barebones of YARA signature ontology
         ont_data = {'type': 'YARA', 'name': sig, 'attributes': [{'file_hash': self.sha256}]}

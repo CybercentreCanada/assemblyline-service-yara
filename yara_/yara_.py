@@ -6,6 +6,7 @@ from typing import List
 import yara
 
 from assemblyline.common.str_utils import safe_str
+from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Heuristic, Result, ResultSection, BODY_FORMAT
 from yara_.helper import YaraMetadata, YARA_EXTERNALS
@@ -56,6 +57,7 @@ class Yara(ServiceBase):
 
         self.initialization_lock = threading.RLock()
         self.deep_scan = None
+        self.sha256 = None
 
         # Load externals
         self.yara_externals = {f'al_{x.replace(".", "_")}': "" for x in externals}
@@ -80,12 +82,21 @@ class Yara(ServiceBase):
         """
         almeta = YaraMetadata(match)
         self._normalize_metadata(almeta)
+        actors = []
+        attacks = []
+        malware_families = []
+
+        if almeta.mitre_att:
+            attacks = almeta.mitre_att if isinstance(almeta.mitre_att, list) else [almeta.mitre_att]
 
         section = ResultSection('', classification=almeta.classification)
         # Allow the al_score meta in a YARA rule to override default scoring
-        sig = f'{match.namespace}.{match.rule}'
         score_map = {sig: almeta.al_score} if almeta.al_score else None
         heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1), score_map=score_map)
+        sig = f'{match.namespace}.{match.rule}'
+
+        # Barebones of YARA signature ontology
+        ont_data = {'type': 'YARA', 'name': sig, 'attributes': [{'file_hash': self.sha256}]}
 
         if self.deep_scan or almeta.al_status != "NOISY":
             section.set_heuristic(heur, signature=sig, attack_id=almeta.mitre_att)
@@ -94,7 +105,7 @@ class Yara(ServiceBase):
         title_elements = [f"[{match.namespace}] {match.rule}", ]
 
         if almeta.actor_type:
-            section.add_tag('attribution.actor', almeta.actor_type)
+            actors.append(almeta.actor_type)
 
         for tag in almeta.tags:
             section.add_tag(tag['type'], tag['value'])
@@ -108,13 +119,13 @@ class Yara(ServiceBase):
             if implant_family:
                 implant_title_elements.append(implant_family)
                 section.add_tag('attribution.family', implant_family)
+                malware_families.append(implant_family)
         if implant_title_elements:
             title_elements.append(f"- Implant(s): {', '.join(implant_title_elements)}")
 
         # Threat Actor metadata
-        for actor in almeta.actors:
-            title_elements.append(actor)
-            section.add_tag('attribution.actor', actor)
+        title_elements.extend(almeta.actors)
+        actors.extend(almeta.actors)
 
         # Exploit / CVE metadata
         if almeta.exploits:
@@ -143,6 +154,8 @@ class Yara(ServiceBase):
         for element in almeta.behavior:
             section.add_tag('file.behavior', element)
 
+        [section.add_tag('attribution.actor', actor) for actor in actors]
+
         title = " ".join(title_elements)
         section.title_text = title
 
@@ -162,6 +175,9 @@ class Yara(ServiceBase):
 
         section.set_body(json.dumps(json_body), body_format=BODY_FORMAT.KEY_VALUE)
 
+        # Update Signature ontology data and append to collection
+        ont_data.update(dict(attack=attacks or None, actor=actors or None, malware_family=malware_families or None))
+        self.ontology.add_result_part(Signature, ont_data)
         result.add_section(section)
         # result.order_results_by_score() TODO: should v4 support this?
 
@@ -322,6 +338,8 @@ class Yara(ServiceBase):
         if not self.rules:
             return
 
+        self.sha256 = request.sha256
+
         request.set_service_context(f"{self.name} version: {self.get_yara_version()}")
 
         self.deep_scan = request.task.deep_scan
@@ -378,6 +396,7 @@ class Yara(ServiceBase):
                         section = ResultSection(f"{self.name} scan not completed.", parent=result)
                         section.add_line("File returned too many matches with current rule set and YARA exited.")
                         request.result = result
+        self.sha256 = None
 
     def get_yara_version(self):
         return yara.YARA_VERSION

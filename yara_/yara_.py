@@ -9,7 +9,7 @@ from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Heuristic, Result, ResultSection, BODY_FORMAT
-from yara_.helper import YaraMetadata, YARA_EXTERNALS
+from yara_.helper import YaraMetadata, YARA_EXTERNALS, YaraValidator
 
 
 class Yara(ServiceBase):
@@ -91,9 +91,12 @@ class Yara(ServiceBase):
 
         section = ResultSection('', classification=almeta.classification)
         # Allow the al_score meta in a YARA rule to override default scoring
-        sig = f'{match.namespace}.{match.rule}'
         score_map = {sig: almeta.al_score} if almeta.al_score else None
         heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1), score_map=score_map)
+        sig = f'{match.namespace}.{match.rule}'
+
+        # Barebones of YARA signature ontology
+        ont_data = {'type': 'YARA', 'name': sig, 'attributes': [{'file_hash': self.sha256}]}
 
         # Barebones of YARA signature ontology
         ont_data = {'type': 'YARA', 'name': sig, 'attributes': [{'file_hash': self.sha256}]}
@@ -321,6 +324,10 @@ class Yara(ServiceBase):
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
         try:
+            # Validate rules using the validator
+            validator = YaraValidator(externals=self.yara_externals, logger=self.log)
+            [validator.validate_rules(yf) for yf in self.rules_list]
+
             rules = yara.compile(filepaths={os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list},
                                  externals=self.yara_externals)
 

@@ -9,7 +9,7 @@ from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Heuristic, Result, ResultSection, BODY_FORMAT
-from yara_.helper import YaraMetadata, YARA_EXTERNALS
+from yara_.helper import YaraMetadata, YARA_EXTERNALS, YaraValidator
 
 
 class Yara(ServiceBase):
@@ -321,6 +321,10 @@ class Yara(ServiceBase):
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
         try:
+            # Validate rules using the validator
+            validator = YaraValidator(externals=self.yara_externals, logger=self.log)
+            [validator.validate_rules(yf) for yf in self.rules_list]
+
             rules = yara.compile(filepaths={os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list},
                                  externals=self.yara_externals)
 

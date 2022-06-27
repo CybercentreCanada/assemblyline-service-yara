@@ -122,12 +122,21 @@ class YaraUpdateServer(ServiceUpdater):
                             s.setdefault('metadata', [])
 
                             # Do not override category with guessed category if it already exists
+                            meta_to_add = []
+                            category_found = False
                             for meta in s['metadata']:
                                 if 'category' in meta:
+                                    category_found = True
                                     continue
+                                # Ensure that al_score get added if there is some resembling metadata about it
+                                if 'al_score' in list(meta.keys())[0] and isinstance(meta[list(meta.keys())[0]], int):
+                                    meta_to_add.append({'al_score', meta[list(meta.keys())[0]]})
 
-                            s['metadata'].append({'category': guessed_category})
-                            s['metadata'].append({guessed_category: s.get('rule_name')})
+                            if not category_found:
+                                meta_to_add.append({'category': guessed_category})
+                                meta_to_add.append({guessed_category: s.get('rule_name')})
+
+                            s['metadata'].extend(meta_to_add)
 
                     # Save all rules from source into single file
                     for s in signatures:

@@ -96,14 +96,16 @@ class Yara(ServiceBase):
         sig = f'{match.namespace}.{match.rule}'
 
         # Barebones of YARA signature ontology
-        ont_data = {'type': 'YARA', 'name': sig, 'attributes': [{
+        ont_data = {'type': 'YARA', 'name': sig }
+        attribute = {
             'file_hash': self.sha256,
             'source': {
-                'tag': sig,
-                'service_name': self.__class__.__name__,
-        }}]}
-
-        ont_data['attributes'][0]['source']['ontology_id'] = Signature.get_oid(ont_data)
+                'ontology_id': Signature.get_oid(ont_data),
+                'tag': Signature.get_tag(ont_data),
+                'service_name': self.__class__.__name__
+            }
+        }
+        ont_data['attributes'] = [attribute]
 
         # Barebones of YARA signature ontology
         ont_data = {'type': 'YARA', 'name': sig, 'attributes': [{'file_hash': self.sha256}]}

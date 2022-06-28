@@ -101,7 +101,7 @@ class Yara(ServiceBase):
             'source': {
                 'tag': sig,
                 'service_name': self.__class__.__name__,
-        }}]}
+            }}]}
 
         ont_data['attributes'][0]['source']['ontology_id'] = Signature.get_oid(ont_data)
 
@@ -183,7 +183,8 @@ class Yara(ServiceBase):
         section.set_body(json.dumps(json_body), body_format=BODY_FORMAT.KEY_VALUE)
 
         # Update Signature ontology data and append to collection
-        ont_data.update(dict(attacks=attacks or None, actors=actors or None, malware_families=malware_families or None))
+        ont_data.update(dict(attacks=[{'attack_id': attack_id} for attack_id in attacks] or None,
+                             actors=actors or None, malware_families=malware_families or None))
         self.ontology.add_result_part(Signature, ont_data)
         result.add_section(section)
         # result.order_results_by_score() TODO: should v4 support this?

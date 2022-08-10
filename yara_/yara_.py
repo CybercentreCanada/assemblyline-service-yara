@@ -117,6 +117,11 @@ class Yara(ServiceBase):
         for tag in almeta.tags:
             section.add_tag(tag['type'], tag['value'])
 
+        if almeta.malware_type:
+            if isinstance(almeta.malware_type, str):
+                almeta.malware_type = [almeta.malware_type]
+            title_elements.append(f"- Malware Type(s): {', '.join(almeta.malware_type)}")
+
         # Malware Tags
         implant_title_elements = []
         for (implant_name, implant_family) in almeta.malwares:

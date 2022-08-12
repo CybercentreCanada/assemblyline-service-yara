@@ -29,7 +29,7 @@ RUN make install
 USER assemblyline
 RUN touch /tmp/before-pip
 RUN pip install --no-cache-dir --user plyara
-RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" --global-option="--enable-magic" yara-python==${YARA_VERSION}
+RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" --global-option="--enable-magic" git+https://github.com/VirusTotal/yara-python.git@d29ca083f4cb25ea52988314b844bb7cf8594b5b
 RUN rm -rf ~/.cache/pip
 
 # Remove files that existed before the pip install so that our copy command below doesn't take a snapshot of

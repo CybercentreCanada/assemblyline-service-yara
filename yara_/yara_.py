@@ -201,11 +201,12 @@ class Yara(ServiceBase):
             elif software:
                 for att_id in software['attack_ids']:
                     attack = attack_map.get(att_id)
-                    ont_attacks.append({
-                        'attack_id': attack['attack_id'],
-                        'pattern': attack['name'],
-                        'categories': attack['categories']
-                    })
+                    if attack:
+                        ont_attacks.append({
+                            'attack_id': attack['attack_id'],
+                            'pattern': attack['name'],
+                            'categories': attack['categories']
+                        })
             else:
                 self.log.warning(f"AttackID {attack_id} not known to Assemblyline.")
         ont_data.update(dict(attacks=ont_attacks or None,

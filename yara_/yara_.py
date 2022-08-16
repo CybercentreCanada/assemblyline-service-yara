@@ -10,7 +10,7 @@ from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import Heuristic, Result, ResultSection, BODY_FORMAT
 from yara_.helper import YaraMetadata, YARA_EXTERNALS, YaraValidator
-
+from assemblyline.common.attack_map import attack_map
 
 class Yara(ServiceBase):
     TECHNIQUE_DESCRIPTORS = dict(
@@ -188,7 +188,18 @@ class Yara(ServiceBase):
         section.set_body(json.dumps(json_body), body_format=BODY_FORMAT.KEY_VALUE)
 
         # Update Signature ontology data and append to collection
-        ont_data.update(dict(attacks=[{'attack_id': attack_id} for attack_id in attacks] or None,
+        ont_attacks = []
+        for attack_id in attacks:
+            attack = attack_map.get(attack_id)
+            if attack:
+                ont_attacks.append({
+                    'attack_id': attack['attack_id']
+                    'pattern': attack['name'],
+                    'categories': attack['categories']
+                })
+            else:
+                self.log.warning(f"AttackID {attack_id} not known to Assemblyline.")
+        ont_data.update(dict(attacks=ont_attacks or None,
                              actors=actors or None, malware_families=malware_families or None))
         self.ontology.add_result_part(Signature, ont_data)
         result.add_section(section)

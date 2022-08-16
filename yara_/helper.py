@@ -286,6 +286,8 @@ class YaraMetadata(object):
         def _safe_split(comma_sep_list):
             if comma_sep_list is None:
                 return []
+            elif isinstance(comma_sep_list, list):
+                return comma_sep_list
             return [e for e in comma_sep_list.split(',') if e]
 
         # Specifics about the category
@@ -294,8 +296,10 @@ class YaraMetadata(object):
         self.exploit = meta.get('exploit', None)
         self.tool = meta.get('tool', None)
         self.malware = meta.get('malware', meta.get('implant', []))
-        if isinstance(self.malware, list):
-            self.malware = ",".join(self.malware)
+
+        for category in [self.info, self.technique, self.exploit, self.tool, self.malware]:
+            if isinstance(category, list):
+                category = ",".join(category)
 
         self.actors = _safe_split(self.actor)
         self.behavior = set(_safe_split(meta.get('summary', None)))

@@ -286,6 +286,8 @@ class YaraMetadata(object):
         def _safe_split(comma_sep_list):
             if comma_sep_list is None:
                 return []
+            elif isinstance(comma_sep_list, list):
+                return comma_sep_list
             return [e for e in comma_sep_list.split(',') if e]
 
         # Specifics about the category

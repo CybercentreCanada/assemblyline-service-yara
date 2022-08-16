@@ -188,7 +188,7 @@ class Yara(ServiceBase):
             attack = attack_map.get(attack_id)
             if attack:
                 ont_attacks.append({
-                    'attack_id': attack['attack_id']
+                    'attack_id': attack['attack_id'],
                     'pattern': attack['name'],
                     'categories': attack['categories']
                 })

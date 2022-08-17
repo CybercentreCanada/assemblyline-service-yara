@@ -298,15 +298,15 @@ class YaraMetadata(object):
         self.malware = meta.get('malware', meta.get('implant', []))
 
 
-        if isinstance(self.info):
+        if isinstance(self.info, list):
             self.info = ",".join(self.info)
-        if isinstance(self.technique):
+        if isinstance(self.technique, list):
             self.technique = ",".join(self.technique)
-        if isinstance(self.exploit):
+        if isinstance(self.exploit, list):
             self.exploit = ",".join(self.exploit)
-        if isinstance(self.tool):
+        if isinstance(self.tool, list):
             self.tool = ",".join(self.tool)
-        if isinstance(self.malware):
+        if isinstance(self.malware, list):
             self.malware = ",".join(self.malware)
 
         self.actors = _safe_split(self.actor)

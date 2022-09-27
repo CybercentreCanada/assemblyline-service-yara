@@ -12,6 +12,7 @@ from assemblyline_v4_service.common.result import Heuristic, Result, ResultSecti
 from yara_.helper import YaraMetadata, YARA_EXTERNALS, YaraValidator
 from assemblyline.common.attack_map import attack_map, software_map
 
+
 class Yara(ServiceBase):
     TECHNIQUE_DESCRIPTORS = dict(
         shellcode=('technique.shellcode', 'Embedded shellcode'),
@@ -91,9 +92,9 @@ class Yara(ServiceBase):
 
         section = ResultSection('', classification=almeta.classification)
         # Allow the al_score meta in a YARA rule to override default scoring
+        sig = f'{match.namespace}.{match.rule}'
         score_map = {sig: almeta.al_score} if almeta.al_score else None
         heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1), score_map=score_map)
-        sig = f'{match.namespace}.{match.rule}'
 
         # Barebones of YARA signature ontology
         ont_data = {'type': 'YARA', 'name': sig, 'attributes': [{
@@ -106,7 +107,9 @@ class Yara(ServiceBase):
         ont_data['attributes'][0]['source']['ontology_id'] = Signature.get_oid(ont_data)
 
         if self.deep_scan or almeta.al_status != "NOISY":
-            section.set_heuristic(heur, signature=sig, attack_id=almeta.mitre_att)
+            heur.add_signature_id(sig)
+            [heur.add_attack_id(attack_id=attack_id) for attack_id in attacks]
+            section.set_heuristic(heur)
         section.add_tag(f'file.rule.{self.name.lower()}', sig)
 
         title_elements = [f"[{match.namespace}] {match.rule}", ]

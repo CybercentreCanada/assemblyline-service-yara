@@ -12,6 +12,7 @@ from assemblyline_v4_service.common.result import Heuristic, Result, ResultSecti
 from yara_.helper import YaraMetadata, YARA_EXTERNALS, YaraValidator
 from assemblyline.common.attack_map import attack_map, software_map
 
+
 class Yara(ServiceBase):
     TECHNIQUE_DESCRIPTORS = dict(
         shellcode=('technique.shellcode', 'Embedded shellcode'),
@@ -106,7 +107,9 @@ class Yara(ServiceBase):
         ont_data['attributes'][0]['source']['ontology_id'] = Signature.get_oid(ont_data)
 
         if self.deep_scan or almeta.al_status != "NOISY":
-            section.set_heuristic(heur, signature=sig, attack_id=almeta.mitre_att)
+            heur.add_signature_id(sig)
+            [heur.add_attack_id(attack_id=attack_id) for attack_id in attacks]
+            section.set_heuristic(heur)
         section.add_tag(f'file.rule.{self.name.lower()}', sig)
 
         title_elements = [f"[{match.namespace}] {match.rule}", ]

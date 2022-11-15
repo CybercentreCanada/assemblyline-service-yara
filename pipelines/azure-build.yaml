@@ -21,12 +21,27 @@ stages:
             inputs:
               command: login
               containerRegistry: dockerhub
+          - task: Docker@2
+            displayName: Login to chimera
+            inputs:
+              command: login
+              containerRegistry: CHIMERA-U-ACR
           - script: |
               set -xv  # Echo commands before they are run
               export TAG=${BUILD_SOURCEBRANCH#"refs/tags/v"}
               if [[ "$TAG" == *stable* ]]; then export BUILD_TYPE=stable; else export BUILD_TYPE=latest; fi
+
               docker build --build-arg version=$TAG --build-arg branch=$BUILD_TYPE -t cccs/assemblyline-service-yara:$TAG -t cccs/assemblyline-service-yara:$BUILD_TYPE -f ./yara_/Dockerfile .
+
               docker build --build-arg version=$TAG --build-arg build_type=$BUILD_TYPE -t cccs/assemblyline-service-tagcheck:$TAG -t cccs/assemblyline-service-tagcheck:$BUILD_TYPE -f ./tagcheck/Dockerfile .
-              docker push cccs/assemblyline-service-yara --all-tags
-              docker push cccs/assemblyline-service-tagcheck --all-tags
-            displayName: Deploy to Docker Hub
+
+              for SERVICE in "assemblyline-service-yara" "assemblyline-service-tagcheck"
+              do
+                for IMAGE in "cccs/" "uchimera.azurecr.io/cccs/"
+                do
+                  docker tag cccs/${SERVICE}:$BUILD_TYPE ${IMAGE}${SERVICE}:$TAG
+                  docker tag cccs/${SERVICE}:$BUILD_TYPE ${IMAGE}${SERVICE}:$BUILD_TYPE
+                  docker push ${IMAGE}${SERVICE} --all-tags
+                done
+              done
+            displayName: Deploy to container repositories

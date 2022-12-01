@@ -99,10 +99,11 @@ class Yara(ServiceBase):
         heur = Heuristic(1, score_map=score_map)
         if isinstance(almeta.category, list):
             for category in almeta.category:
+                category = category.lower()
                 if Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1)).score > heur.score:
                     heur = Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1))
         elif isinstance(almeta.category, str):
-            heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1), score_map=score_map)
+            heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category.lower(), 1), score_map=score_map)
 
         # Barebones of YARA signature ontology
         ont_data = {'type': 'YARA', 'name': sig, 'attributes': [{

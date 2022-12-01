@@ -259,7 +259,7 @@ class YaraMetadata(object):
 
         self.name = match.rule
         self.id = meta.get('id', meta.get('rule_id', meta.get('signature_id', None)))
-        self.category = meta.get('category', meta.get('rule_group', 'info')).lower()
+        self.category = meta.get('category', meta.get('rule_group', 'info'))
         self.malware_type = meta.get('malware_type', None)
         self.version = meta.get('version', meta.get('rule_version', meta.get('revision', 1)))
         self.description = meta.get('description', None)
@@ -296,7 +296,6 @@ class YaraMetadata(object):
         self.exploit = meta.get('exploit', None)
         self.tool = meta.get('tool', None)
         self.malware = meta.get('malware', meta.get('implant', []))
-
 
         if isinstance(self.info, list):
             self.info = ",".join(self.info)

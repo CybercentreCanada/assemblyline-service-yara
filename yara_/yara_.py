@@ -94,7 +94,16 @@ class Yara(ServiceBase):
         # Allow the al_score meta in a YARA rule to override default scoring
         sig = f'{match.namespace}.{match.rule}'
         score_map = {sig: almeta.al_score} if almeta.al_score else None
-        heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category, 1), score_map=score_map)
+
+        # If there's multiple categories, assign the highest for scoring
+        heur = Heuristic(1, score_map=score_map)
+        if isinstance(almeta.category, list):
+            for category in almeta.category:
+                category = category.lower()
+                if Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1)).score > heur.score:
+                    heur = Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1))
+        elif isinstance(almeta.category, str):
+            heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category.lower(), 1), score_map=score_map)
 
         # Barebones of YARA signature ontology
         ont_data = {'type': 'YARA', 'name': sig, 'attributes': [{

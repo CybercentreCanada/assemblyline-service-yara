@@ -119,7 +119,7 @@ heuristics:
 
 docker_config:
   image: ${REGISTRY}cccs/assemblyline-service-tagcheck:$SERVICE_TAG
-  cpu_cores: 1.0
+  cpu_cores: 0.5
   ram_mb: 768
 
 dependencies:

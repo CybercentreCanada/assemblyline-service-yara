@@ -1,6 +1,7 @@
 import json
 import os
 import threading
+from collections import defaultdict
 from typing import List
 
 import yara
@@ -234,11 +235,25 @@ class Yara(ServiceBase):
         """
         string_hits = []
         strings = match.strings
-        string_dict = {}
-        for offset, identifier, data in strings:
-            if data not in string_dict:
-                string_dict[data] = []
-            string_dict[data].append((offset, identifier))
+        string_dict = defaultdict(list)
+        try:
+            for offset, identifier, data in strings:
+                string_dict[data].append((offset, identifier))
+        except TypeError:  # Breaking change in https://github.com/VirusTotal/yara-python/releases/tag/v4.3.0
+            strings = match.strings  # List[yara.StringMatch]
+
+            for string_match in strings:  # yara.StringMatch
+                assert isinstance(string_match, yara.StringMatch)
+                identifier = string_match.identifier
+                # is_xor = string_match.is_xor()
+                for smi in string_match.instances:
+                    matched_data = smi.matched_data
+                    # matched_length = smi.matched_length
+                    offset = smi.offset
+                    # if is_xor:
+                    #     xor_key = smi.xor_key
+                    #     matched_data = smi.plaintext()
+                    string_dict[matched_data].append((offset, identifier))
 
         result_dict = {}
         for string_value, string_list in string_dict.items():

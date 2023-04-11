@@ -14,7 +14,7 @@ This Assemblyline service runs the YARA application against all file types.
 
 #### Execution
 
-Currently AL runs YARA 4.2.0, and therefore supports the following external modules:
+Currently AL runs YARA 4.3.0, and therefore supports the following external modules:
 
 * Dotnet
 * ELF
@@ -28,8 +28,8 @@ Currently AL runs YARA 4.2.0, and therefore supports the following external modu
  AL YARA rules follow the CCCS standard. Detailed information on writing YARA rules, as well as the MALWARE standard, can be found at the following locations:
 
  Rule creation:
-c
- * https://yara.readthedocs.io/en/v4.2.0/
+
+ * https://yara.readthedocs.io/en/v4.3.0/
 
  CCCS Standard:
 

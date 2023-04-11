@@ -1,7 +1,7 @@
 ARG branch=latest
 FROM cccs/assemblyline-v4-service-base:$branch AS base
 ENV SERVICE_PATH yara_.yara_.Yara
-ENV YARA_VERSION='4.2.3'
+ENV YARA_VERSION='4.3.0'
 
 # Don't use the version of yara-python from assemblyline-base
 USER assemblyline
@@ -29,7 +29,7 @@ RUN make install
 USER assemblyline
 RUN touch /tmp/before-pip
 RUN pip install --no-cache-dir --user plyara
-RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" --global-option="--enable-magic" git+https://github.com/VirusTotal/yara-python.git@d29ca083f4cb25ea52988314b844bb7cf8594b5b
+RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-dotnet" --global-option="--enable-magic" yara-python>=4.3.0
 RUN rm -rf ~/.cache/pip
 
 # Remove files that existed before the pip install so that our copy command below doesn't take a snapshot of

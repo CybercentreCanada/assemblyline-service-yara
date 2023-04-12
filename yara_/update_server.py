@@ -93,7 +93,7 @@ class YaraUpdateServer(ServiceUpdater):
 
                 file_dirname = os.path.dirname(file)
                 processed_files.add(os.path.normpath(file))
-                with open(file, 'r') as f:
+                with open(file, 'r', errors="surrogateescape") as f:
                     f_lines = f.readlines()
 
                 temp_lines: list[str] = []

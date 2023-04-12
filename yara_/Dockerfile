@@ -45,6 +45,7 @@ FROM base
 
 COPY --from=build /tmp/yara_install /usr/local
 COPY --chown=assemblyline:assemblyline --from=build /var/lib/assemblyline/.local /var/lib/assemblyline/.local
+RUN echo "/usr/local/lib" >> /etc/ld.so.conf && ldconfig
 
 # Create directories
 RUN mkdir -p /mount/updates

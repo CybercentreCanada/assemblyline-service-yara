@@ -1,17 +1,21 @@
 from __future__ import annotations
+from typing import Any, Optional
+
 import logging
 import os
 import re
 import tempfile
-from typing import Any, Optional
 
 from assemblyline.common import forge
-from assemblyline_v4_service.updater.updater import ServiceUpdater
+from assemblyline_v4_service.updater.updater import ServiceUpdater, temporary_api_key, UI_SERVER, UPDATER_API_ROLES
+from assemblyline_client import get_client
 
 from plyara import Plyara, utils
 from yara_.helper import YaraImporter, YaraValidator, YARA_EXTERNALS
 
 classification = forge.get_classification()
+
+UPDATER_API_ROLES.append('signature_manage')
 
 
 def _compile_rules(rules_file, externals, logger: logging.Logger):
@@ -78,6 +82,43 @@ class YaraUpdateServer(ServiceUpdater):
     def __init__(self, *args, externals: dict[str, str], **kwargs):
         super().__init__(*args, **kwargs)
         self.externals = externals
+
+    # A sanity check to make sure we do in fact have things to send to services
+    def _inventory_check(self) -> bool:
+        yara_validator = YaraValidator(externals=self.externals, logger=self.log)
+        check_passed = False
+        missing_sources = [_s.name for _s in self._service.update_config.sources]
+        if not self._update_dir:
+            return check_passed
+        username = self.ensure_service_account()
+        with temporary_api_key(self.datastore, username) as api_key:
+            al_client = get_client(UI_SERVER, apikey=(username, api_key), verify=self.verify)
+            for root, dirs, files in os.walk(self._update_dir):
+                # Walk through update directory (account for sources being nested)
+                for path in dirs + files:
+                    remove_source = None
+                    for source in missing_sources:
+                        if source in path:
+                            # We have at least one source we can pass to the service for now
+                            # BUT let's make sure this source can be compiled with yara
+                            yara_validator.validate_rules(os.path.join(root, path), al_client)
+                            remove_source = source
+                            check_passed = True
+                            break
+                    if remove_source:
+                        missing_sources.remove(source)
+
+                if not missing_sources:
+                    break
+
+        if missing_sources:
+            # If sources are missing, then clear caching from Redis and trigger source updates
+            for source in missing_sources:
+                self._current_source = source
+                self.set_source_update_time(0)
+            self.trigger_update()
+
+        return check_passed
 
     def import_update(self, files_sha256, client, source_name: str, default_classification=classification.UNRESTRICTED):
         processed_files: set[str] = set()

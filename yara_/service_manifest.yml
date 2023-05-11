@@ -134,6 +134,9 @@ dependencies:
       command: ["python", "-m", "yara_.update_server"]
       image: ${REGISTRY}cccs/assemblyline-service-yara:$SERVICE_TAG
       ports: ["5003"]
+      environment:
+        - name: MAX_REQUESTS
+          value: "0"
     run_as_core: True
 
 update_config:

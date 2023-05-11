@@ -1,15 +1,13 @@
-import json
 import logging
 import os
 import re
-import subprocess
-import tempfile
 
 from assemblyline.common import forge
-from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.signature import Signature
+from assemblyline_client import Client4
 
 from plyara import Plyara, utils
+import yara
 
 DEFAULT_STATUS = "DEPLOYED"
 Classification = forge.get_classification()
@@ -17,15 +15,15 @@ YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'file_type', 'tag'
 
 
 class YaraImporter(object):
-    def __init__(self, importer_type, al_client, logger=None):
+    def __init__(self, importer_type: str, al_client: Client4, logger=None):
         if not logger:
             from assemblyline.common import log as al_log
             al_log.init_logging('yara_importer')
             logger = logging.getLogger('assemblyline.yara_importer')
             logger.setLevel(logging.INFO)
 
-        self.importer_type = importer_type
-        self.update_client = al_client
+        self.importer_type: str = importer_type
+        self.update_client: Client4 = al_client
         self.parser = Plyara()
         self.classification = forge.get_classification()
         self.log = logger
@@ -37,6 +35,8 @@ class YaraImporter(object):
 
         order = 1
         upload_list = []
+        existing_signatures_ids = [i['id'] for i in self.update_client.search.stream.signature(f'type:{self.importer_type} AND source:{source}', fl='id')]
+        current_signature_ids = []
         for signature in signatures:
             classification = default_classification or self.classification.UNRESTRICTED
             signature_id = None
@@ -65,6 +65,9 @@ class YaraImporter(object):
                     elif k in ['status', 'al_status']:
                         status = v
 
+            signature_id = signature_id or signature.get('rule_name')
+            current_signature_ids.append(f"{self.importer_type}_{source}_{signature_id}")
+
             # Convert CCCS YARA status to AL signature status
             if status == "RELEASED":
                 status = "DEPLOYED"
@@ -84,7 +87,7 @@ class YaraImporter(object):
                     name=signature.get('rule_name'),
                     order=order,
                     revision=int(float(version)),
-                    signature_id=signature_id or signature.get('rule_name'),
+                    signature_id=signature_id,
                     source=source,
                     status=status,
                     type=self.importer_type,
@@ -97,6 +100,10 @@ class YaraImporter(object):
 
         r = self.update_client.signature.add_update_many(source, self.importer_type, upload_list)
         self.log.info(f"Imported {r['success']}/{order - 1} signatures from {source} into Assemblyline")
+
+        # Disable rules that no longer exist in this source
+        # Maintain syncronicity with source while leaving the door open to re-enable rule within Assemblyline instance
+        [self.update_client.signature.change_status(id, status="DISABLED") for id in set(existing_signatures_ids) - set(current_signature_ids)]
 
         return r['success']
 
@@ -143,7 +150,7 @@ class YaraValidator(object):
         # List will start at 0 not 1
         error_line = eline - 1
 
-        if invalid_rule_name:
+        if invalid_rule_name and "duplicated identifier" in message:
             f_lines[error_line] = f_lines[error_line].replace(invalid_rule_name, f"{invalid_rule_name}_1")
             self.log.warning(f"Yara rule '{invalid_rule_name}' was renamed '{invalid_rule_name}_1' because it's "
                              f"rule name was used more then once.")
@@ -187,57 +194,32 @@ class YaraValidator(object):
 
         return invalid_rule_name
 
-    def paranoid_rule_check(self, rulefile):
-        # Run rules separately on command line to ensure there are no errors
-        print_val = "--==Rules_validated++__"
-        external_file = os.path.join(tempfile.gettempdir(), "externals.json")
-        try:
-            with open(external_file, "wb") as out_json:
-                out_json.write(json.dumps(self.externals).encode("utf-8"))
-
-            p = subprocess.Popen(f"python3 paranoid_check.py {rulefile} {external_file}",
-                                 cwd=os.path.dirname(os.path.realpath(__file__)),
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            stdout, stderr = p.communicate()
-
-        finally:
-            os.unlink(external_file)
-
-        stdout = safe_str(stdout)
-        stderr = safe_str(stderr)
-
-        if print_val not in stdout:
-            if stdout.strip().startswith('yara.SyntaxError'):
-                raise Exception(stdout.strip())
-            else:
-                raise Exception("YaraValidator has failed!--+--" + str(stderr) + "--:--" + str(stdout))
-
-    def validate_rules(self, rulefile):
+    def validate_rules(self, rulefile, al_client: Client4 = None):
         change = False
         while True:
             try:
-                self.paranoid_rule_check(rulefile)
+                yara.compile(filepath=rulefile, externals=self.externals).match(data='')
                 return change
 
             # If something goes wrong, clean rules until valid file given
-            except Exception as e:
+            except yara.SyntaxError as e:
                 error = str(e)
-                change = True
-                if error.startswith('yara.SyntaxError'):
-
-                    e_line = int(error.split('):', 1)[0].split("(", -1)[1])
-                    e_message = error.split("): ", 1)[1]
-                    if "duplicated identifier" in error:
-                        invalid_rule_name = e_message.split('"')[1]
-                    else:
-                        invalid_rule_name = ""
-                    try:
-                        self.clean(rulefile, e_line, e_message, invalid_rule_name)
-                    except Exception as ve:
-                        raise ve
-
+                e_line = int(error.split('):', 1)[0].split("(", -1)[1])
+                e_message = error.split("): ", 1)[1]
+                if "identifier" in error:
+                    # Problem with a rule associated to the identifier (unknown, duplicated)
+                    invalid_rule_name = e_message.split('"')[1]
                 else:
-                    raise e
+                    invalid_rule_name = ""
+                try:
+                    invalid_rule_name = self.clean(rulefile, e_line, e_message, invalid_rule_name)
+                    if al_client:
+                        # Disable offending rule from Signatures API
+                        sig_id = al_client.search.signature(f"type:yara AND source:{os.path.basename(rulefile)} AND name:{invalid_rule_name}", rows=1, fl='id')['items'][0]['id']
+                        self.log.warning(f'Disabling rule with signature_id {sig_id} because of: {error}')
+                        al_client.signature.change_status(signature_id=sig_id, status="DISABLED")
+                except Exception as ve:
+                    raise ve
 
                 continue
 

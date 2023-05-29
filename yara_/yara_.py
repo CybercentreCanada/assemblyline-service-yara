@@ -5,13 +5,12 @@ from collections import defaultdict
 from typing import List
 
 import yara
-
+from assemblyline.common.attack_map import attack_map, software_map
 from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
-from assemblyline_v4_service.common.result import Heuristic, Result, ResultSection, BODY_FORMAT
-from yara_.helper import YaraMetadata, YARA_EXTERNALS, YaraValidator
-from assemblyline.common.attack_map import attack_map, software_map
+from assemblyline_v4_service.common.result import BODY_FORMAT, Heuristic, Result, ResultSection
+from yara_.helper import YARA_EXTERNALS, YaraMetadata, YaraValidator
 
 
 class Yara(ServiceBase):

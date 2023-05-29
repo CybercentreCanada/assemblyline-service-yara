@@ -1,17 +1,16 @@
 from __future__ import annotations
-from typing import Any, Optional
 
 import logging
 import os
 import re
 import tempfile
+from typing import Any, Optional
 
 from assemblyline.common import forge
-from assemblyline_v4_service.updater.updater import ServiceUpdater, temporary_api_key, UI_SERVER, UPDATER_API_ROLES
 from assemblyline_client import get_client
-
+from assemblyline_v4_service.updater.updater import UI_SERVER, UPDATER_API_ROLES, ServiceUpdater, temporary_api_key
 from plyara import Plyara, utils
-from yara_.helper import YaraImporter, YaraValidator, YARA_EXTERNALS
+from yara_.helper import YARA_EXTERNALS, YaraImporter, YaraValidator
 
 classification = forge.get_classification()
 

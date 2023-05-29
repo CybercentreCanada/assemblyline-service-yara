@@ -2,12 +2,11 @@ import logging
 import os
 import re
 
+import yara
 from assemblyline.common import forge
 from assemblyline.odm.models.signature import Signature
 from assemblyline_client import Client4
-
 from plyara import Plyara, utils
-import yara
 
 DEFAULT_STATUS = "DEPLOYED"
 Classification = forge.get_classification()

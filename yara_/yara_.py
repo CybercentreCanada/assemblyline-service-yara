@@ -90,7 +90,9 @@ class Yara(ServiceBase):
         if almeta.mitre_att:
             attacks = almeta.mitre_att if isinstance(almeta.mitre_att, list) else [almeta.mitre_att]
 
-        section = ResultSection('', classification=almeta.classification)
+        signature_meta = self.signatures_meta[match.rule]
+
+        section = ResultSection('', classification=signature_meta['classification'])
         # Allow the al_score meta in a YARA rule to override default scoring
         sig = f'{match.namespace}.{match.rule}'
         score_map = {sig: almeta.al_score} if almeta.al_score else None
@@ -115,7 +117,7 @@ class Yara(ServiceBase):
 
         ont_data['attributes'][0]['source']['ontology_id'] = Signature.get_oid(ont_data)
 
-        if self.deep_scan or almeta.al_status != "NOISY":
+        if self.deep_scan or signature_meta['status'] != "NOISY":
             heur.add_signature_id(sig)
             [heur.add_attack_id(attack_id=attack_id) for attack_id in attacks]
             section.set_heuristic(heur)

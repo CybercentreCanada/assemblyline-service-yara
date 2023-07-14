@@ -90,7 +90,12 @@ class Yara(ServiceBase):
         if almeta.mitre_att:
             attacks = almeta.mitre_att if isinstance(almeta.mitre_att, list) else [almeta.mitre_att]
 
-        signature_meta = self.signatures_meta[match.rule]
+        sig_meta_key = match.rule
+        if sig_meta_key not in self.signatures_meta:
+            # Key might be based of the ID metadata of the rule
+            sig_meta_key = almeta.id
+
+        signature_meta = self.signatures_meta[sig_meta_key]
 
         section = ResultSection('', classification=signature_meta['classification'])
         # Allow the al_score meta in a YARA rule to override default scoring

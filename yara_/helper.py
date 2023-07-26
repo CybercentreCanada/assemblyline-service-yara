@@ -5,7 +5,7 @@ import re
 import yara
 from assemblyline.common import forge
 from assemblyline.odm.models.signature import Signature
-from assemblyline_v4_service.updater.client import UpdaterALClient
+from assemblyline_client import Client4
 from plyara import Plyara, utils
 
 DEFAULT_STATUS = "DEPLOYED"
@@ -14,7 +14,7 @@ YARA_EXTERNALS = {f'al_{x}': x for x in ['submitter', 'mime', 'file_type', 'tag'
 
 
 class YaraImporter(object):
-    def __init__(self, importer_type: str, al_client: UpdaterALClient, logger=None):
+    def __init__(self, importer_type: str, al_client: Client4, logger=None):
         if not logger:
             from assemblyline.common import log as al_log
             al_log.init_logging('yara_importer')
@@ -22,7 +22,7 @@ class YaraImporter(object):
             logger.setLevel(logging.INFO)
 
         self.importer_type: str = importer_type
-        self.update_client: UpdaterALClient = al_client
+        self.update_client: Client4 = al_client
         self.parser = Plyara()
         self.classification = forge.get_classification()
         self.log = logger
@@ -186,7 +186,7 @@ class YaraValidator(object):
 
         return invalid_rule_name
 
-    def validate_rules(self, rulefile, al_client: UpdaterALClient = None):
+    def validate_rules(self, rulefile, al_client: Client4 = None):
         change = False
         while True:
             try:

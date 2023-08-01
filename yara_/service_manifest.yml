@@ -145,8 +145,10 @@ update_config:
     - name: bartblaze
       pattern: .*.yar$
       uri: https://github.com/bartblaze/Yara-rules.git
+      sync: true
     - name: reversinglabs
       pattern: .*.yara$
       uri: https://github.com/reversinglabs/reversinglabs-yara-rules.git
+      sync: true
   update_interval_seconds: 86400 # 24 hours
   wait_for_update: true

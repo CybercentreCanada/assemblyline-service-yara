@@ -34,8 +34,6 @@ class YaraImporter(object):
 
         order = 1
         upload_list = []
-        existing_signatures_ids = [i['id'] for i in self.update_client.search.stream.signature(f'type:{self.importer_type} AND source:{source}', fl='id')]
-        current_signature_ids = []
         for signature in signatures:
             classification = default_classification or self.classification.UNRESTRICTED
             signature_id = None
@@ -65,7 +63,6 @@ class YaraImporter(object):
                         status = v
 
             signature_id = signature_id or signature.get('rule_name')
-            current_signature_ids.append(f"{self.importer_type}_{source}_{signature_id}")
 
             # Convert CCCS YARA status to AL signature status
             if status == "RELEASED":
@@ -99,10 +96,6 @@ class YaraImporter(object):
 
         r = self.update_client.signature.add_update_many(source, self.importer_type, upload_list)
         self.log.info(f"Imported {r['success']}/{order - 1} signatures from {source} into Assemblyline")
-
-        # Disable rules that no longer exist in this source
-        # Maintain syncronicity with source while leaving the door open to re-enable rule within Assemblyline instance
-        [self.update_client.signature.change_status(id, status="DISABLED") for id in set(existing_signatures_ids) - set(current_signature_ids)]
 
         return r['success']
 

@@ -104,11 +104,14 @@ class Yara(ServiceBase):
 
         # If there's multiple categories, assign the highest for scoring
         heur = Heuristic(1, score_map=score_map)
-        if isinstance(almeta.category, list):
+        if any([term.lower().startswith("susp") for term in almeta.name.split('_')]):
+            # If the rule name indicates suspiciousness about the match, then score accordingly
+            heur = Heuristic(11, score_map=score_map)
+        elif isinstance(almeta.category, list):
             for category in almeta.category:
                 category = category.lower()
                 if Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1)).score > heur.score:
-                    heur = Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1))
+                    heur = Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1), score_map=score_map)
         elif isinstance(almeta.category, str):
             heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category.lower(), 1), score_map=score_map)
 

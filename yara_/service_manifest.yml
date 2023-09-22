@@ -120,6 +120,12 @@ heuristics:
     filetype: "*"
     description: Yara rule - Threat level 10
 
+  - heur_id: 17
+    name: Suspicious YARA hit
+    score: 500
+    filetype: "*"
+    description: "A YARA rule that detects suspicious files hit"
+
 docker_config:
   image: ${REGISTRY}cccs/assemblyline-service-yara:$SERVICE_TAG
   cpu_cores: 1.0

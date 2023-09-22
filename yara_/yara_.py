@@ -106,7 +106,7 @@ class Yara(ServiceBase):
         heur = Heuristic(1, score_map=score_map)
         if any([term.lower().startswith("susp") for term in almeta.name.split('_')]):
             # If the rule name indicates suspiciousness about the match, then score accordingly
-            heur = Heuristic(11, score_map=score_map)
+            heur = Heuristic(17, score_map=score_map)
         elif isinstance(almeta.category, list):
             for category in almeta.category:
                 category = category.lower()

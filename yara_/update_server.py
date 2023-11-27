@@ -88,6 +88,8 @@ class YaraUpdateServer(ServiceUpdater):
         check_passed = False
         missing_sources = [_s.name for _s in self._service.update_config.sources]
         if not self._update_dir:
+            # Trigger local update
+            self.local_update_flag.set()
             return check_passed
         username = self.ensure_service_account()
         with temporary_api_key(self.datastore, username) as api_key:

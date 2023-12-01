@@ -62,6 +62,10 @@ class YaraImporter(object):
                     elif k in ['status', 'al_status']:
                         status = v
 
+            if not version:
+                # If there is a null value for a version, then default to original value
+                version = 1
+
             signature_id = signature_id or signature.get('rule_name')
 
             # Convert CCCS YARA status to AL signature status

@@ -100,7 +100,11 @@ class Yara(ServiceBase):
         section = ResultSection("", classification=signature_meta["classification"])
         # Allow the al_score meta in a YARA rule to override default scoring
         sig = f"{match.namespace}.{match.rule}"
-        score_map = {sig: int(almeta.al_score)} if almeta.al_score else None
+        try:
+            score_map = {sig: int(almeta.al_score)} if almeta.al_score else None
+        except ValueError:
+            self.log.error(f"Invalid al_score value on rule '{sig}': {almeta.al_score}. Continuing without override..")
+            score_map = None
 
         # If there's multiple categories, assign the highest for scoring
         heur = Heuristic(1, score_map=score_map)

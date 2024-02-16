@@ -15,6 +15,7 @@ disable_cache: false
 enabled: true
 is_external: false
 licence_count: 0
+privileged: true
 
 uses_tags: true
 uses_metadata: true
@@ -120,7 +121,7 @@ heuristics:
 docker_config:
   image: ${REGISTRY}cccs/assemblyline-service-tagcheck:$SERVICE_TAG
   cpu_cores: 0.5
-  ram_mb: 768
+  ram_mb: 2048
 
 dependencies:
   updates:
@@ -129,6 +130,8 @@ dependencies:
       command: ["python", "-m", "tagcheck.update_server"]
       image: ${REGISTRY}cccs/assemblyline-service-tagcheck:$SERVICE_TAG
       ports: ["5003"]
+      cpu_cores: 2
+      ram_mb: 4096
     run_as_core: True
 
 update_config:

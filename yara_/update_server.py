@@ -114,7 +114,7 @@ class YaraUpdateServer(ServiceUpdater):
 
         return check_passed
 
-    def import_update(self, files_sha256, client, source_name: str, default_classification=classification.UNRESTRICTED):
+    def import_update(self, files_sha256, source_name: str, default_classification=classification.UNRESTRICTED):
         processed_files: set[str] = set()
 
         with tempfile.NamedTemporaryFile(mode="a+", suffix=source_name) as compiled_file:
@@ -173,7 +173,7 @@ class YaraUpdateServer(ServiceUpdater):
                 except Exception as e:
                     self.log.error(f"Problem parsing {file}: {e}")
                     continue
-            yara_importer = YaraImporter(self.updater_type, client, logger=self.log)
+            yara_importer = YaraImporter(self.updater_type, self.client, logger=self.log)
             try:
                 compiled_file.seek(0)
                 _compile_rules(compiled_file.name, self.externals, self.log)
@@ -185,5 +185,5 @@ class YaraUpdateServer(ServiceUpdater):
 
 
 if __name__ == "__main__":
-    with YaraUpdateServer(externals=YARA_EXTERNALS, default_pattern="*.yar*") as server:
+    with YaraUpdateServer(externals=YARA_EXTERNALS, default_pattern="*\.yar*") as server:
         server.serve_forever()

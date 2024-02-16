@@ -5,7 +5,7 @@ import re
 import yara
 from assemblyline.common import forge
 from assemblyline.odm.models.signature import Signature
-from assemblyline_client import Client4
+from assemblyline_v4_service.updater.client import UpdaterClient
 from plyara import Plyara, utils
 
 DEFAULT_STATUS = "DEPLOYED"
@@ -14,7 +14,7 @@ YARA_EXTERNALS = {f"al_{x}": x for x in ["submitter", "mime", "file_type", "tag"
 
 
 class YaraImporter(object):
-    def __init__(self, importer_type: str, al_client: Client4, logger=None):
+    def __init__(self, importer_type: str, al_client: UpdaterClient, logger=None):
         if not logger:
             from assemblyline.common import log as al_log
 
@@ -23,7 +23,7 @@ class YaraImporter(object):
             logger.setLevel(logging.INFO)
 
         self.importer_type: str = importer_type
-        self.update_client: Client4 = al_client
+        self.update_client: UpdaterClient = al_client
         self.parser = Plyara()
         self.parser.STRING_ESCAPE_CHARS.add("r")
         self.classification = forge.get_classification()
@@ -214,7 +214,7 @@ class YaraValidator(object):
 
         return invalid_rule_name
 
-    def validate_rules(self, rulefile, al_client: Client4 = None):
+    def validate_rules(self, rulefile, al_client: UpdaterClient = None):
         change = False
         while True:
             try:
@@ -235,13 +235,11 @@ class YaraValidator(object):
                     invalid_rule_name = self.clean(rulefile, e_line, e_message, invalid_rule_name)
                     if al_client:
                         # Disable offending rule from Signatures API
-                        sig_id = al_client.search.signature(
+                        sig_id = al_client.datastore.signature.search(
                             f"type:yara AND source:{os.path.basename(rulefile)} AND name:{invalid_rule_name}",
-                            rows=1,
-                            fl="id",
-                        )["items"][0]["id"]
+                            rows=1, fl="id", as_obj=False)['items'][0]["id"]
                         self.log.warning(f"Disabling rule with signature_id {sig_id} because of: {error}")
-                        al_client.signature.change_status(signature_id=sig_id, status="DISABLED")
+                        al_client.signature.change_status(sig_id, "DISABLED")
                 except Exception as ve:
                     raise ve
 

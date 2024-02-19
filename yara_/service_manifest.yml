@@ -18,6 +18,7 @@ disable_cache: false
 enabled: true
 is_external: false
 licence_count: 0
+privileged: true
 
 uses_tags: true
 uses_metadata: true
@@ -129,12 +130,12 @@ heuristics:
 docker_config:
   image: ${REGISTRY}cccs/assemblyline-service-yara:$SERVICE_TAG
   cpu_cores: 1.0
-  ram_mb: 768
+  ram_mb: 2048
 
 dependencies:
   updates:
     container:
-      cpu_cores: 1.0
+      cpu_cores: 2.0
       ram_mb: 4096
       allow_internet_access: true
       command: ["python", "-m", "yara_.update_server"]

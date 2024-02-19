@@ -7,15 +7,12 @@ import tempfile
 from typing import Any, Optional
 
 from assemblyline.common import forge
-from assemblyline_client import get_client
-from assemblyline_v4_service.updater.updater import UI_SERVER, UPDATER_API_ROLES, ServiceUpdater, temporary_api_key
+from assemblyline_v4_service.updater.updater import ServiceUpdater
 from plyara import Plyara, utils
 
 from yara_.helper import YARA_EXTERNALS, YaraImporter, YaraValidator
 
 classification = forge.get_classification()
-
-UPDATER_API_ROLES.append("signature_manage")
 
 
 def _compile_rules(rules_file, externals, logger: logging.Logger):
@@ -90,26 +87,23 @@ class YaraUpdateServer(ServiceUpdater):
         missing_sources = [_s.name for _s in self._service.update_config.sources]
         if not self._update_dir:
             return check_passed
-        username = self.ensure_service_account()
-        with temporary_api_key(self.datastore, username) as api_key:
-            al_client = get_client(UI_SERVER, apikey=(username, api_key), verify=self.verify)
-            for root, dirs, files in os.walk(self._update_dir):
-                # Walk through update directory (account for sources being nested)
-                for path in dirs + files:
-                    remove_source = None
-                    for source in missing_sources:
-                        if source in path:
-                            # We have at least one source we can pass to the service for now
-                            # BUT let's make sure this source can be compiled with yara
-                            yara_validator.validate_rules(os.path.join(root, path), al_client)
-                            remove_source = source
-                            check_passed = True
-                            break
-                    if remove_source:
-                        missing_sources.remove(source)
+        for root, dirs, files in os.walk(self._update_dir):
+            # Walk through update directory (account for sources being nested)
+            for path in dirs + files:
+                remove_source = None
+                for source in missing_sources:
+                    if source in path:
+                        # We have at least one source we can pass to the service for now
+                        # BUT let's make sure this source can be compiled with yara
+                        yara_validator.validate_rules(os.path.join(root, path), self.client)
+                        remove_source = source
+                        check_passed = True
+                        break
+                if remove_source:
+                    missing_sources.remove(source)
 
-                if not missing_sources:
-                    break
+            if not missing_sources:
+                break
 
         if missing_sources:
             # If sources are missing, then clear caching from Redis and trigger source updates
@@ -120,7 +114,7 @@ class YaraUpdateServer(ServiceUpdater):
 
         return check_passed
 
-    def import_update(self, files_sha256, client, source_name: str, default_classification=classification.UNRESTRICTED):
+    def import_update(self, files_sha256, source_name: str, default_classification=classification.UNRESTRICTED):
         processed_files: set[str] = set()
 
         with tempfile.NamedTemporaryFile(mode="a+", suffix=source_name) as compiled_file:
@@ -179,7 +173,7 @@ class YaraUpdateServer(ServiceUpdater):
                 except Exception as e:
                     self.log.error(f"Problem parsing {file}: {e}")
                     continue
-            yara_importer = YaraImporter(self.updater_type, client, logger=self.log)
+            yara_importer = YaraImporter(self.updater_type, self.client, logger=self.log)
             try:
                 compiled_file.seek(0)
                 _compile_rules(compiled_file.name, self.externals, self.log)
@@ -191,5 +185,5 @@ class YaraUpdateServer(ServiceUpdater):
 
 
 if __name__ == "__main__":
-    with YaraUpdateServer(externals=YARA_EXTERNALS, default_pattern="*.yar*") as server:
+    with YaraUpdateServer(externals=YARA_EXTERNALS, default_pattern="*\.yar*") as server:
         server.serve_forever()

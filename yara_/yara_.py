@@ -132,7 +132,8 @@ class Yara(ServiceBase):
                     },
                 }
             ],
-            "signature_id": sig_meta_key
+            "signature_id": sig_meta_key,
+            "classification": signature_meta["classification"]
         }
 
         ont_data["attributes"][0]["source"]["ontology_id"] = Signature.get_oid(ont_data)

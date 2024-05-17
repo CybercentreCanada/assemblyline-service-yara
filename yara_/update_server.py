@@ -52,7 +52,10 @@ def guess_category(rule_file_name: str) -> Optional[str]:
 
 
 def replace_include(include, dirname, processed_files: set[str], cur_logger: logging.Logger):
-    include_path = re.match(r"include [\'\"](.{4,})[\'\"]", include).group(1)
+    include_path = re.match(r"include [\'\"](.{4,})[\'\"]", include)
+    if not include_path:
+        return [], processed_files
+    include_path = include_path.group(1)
     full_include_path = os.path.normpath(os.path.join(dirname, include_path))
     if not os.path.exists(full_include_path):
         cur_logger.info(f"File doesn't exist: {full_include_path}")
@@ -185,5 +188,5 @@ class YaraUpdateServer(ServiceUpdater):
 
 
 if __name__ == "__main__":
-    with YaraUpdateServer(externals=YARA_EXTERNALS, default_pattern="*\.yar*") as server:
+    with YaraUpdateServer(externals=YARA_EXTERNALS, default_pattern=".*\.yar(a)?") as server:
         server.serve_forever()

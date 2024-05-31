@@ -918,10 +918,8 @@ rule TerritorialDisputeSIGs {
         al_dynamic_registry_key matches /.*\\\\System\\\\CurrentControlSet\\\\Control\\\\CrashImage/i or
         al_dynamic_registry_key matches /.*\\\\System\\\\CurrentControlSet\\\\Services\\\\systmmgmt\\\\Paramaters\\\\ServiceDll/i or
         al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Policies\\\\Explorer\\\\Run\\\\ipmontr$/i or
-            /i or
         al_dynamic_registry_key matches /.*\\\\Software\\\\Microsoft\\\\WinKernel\\\\Explorer\\\\Run\\\\ipmontr/i or
         al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Policies\\\\Explorer\\\\Run\\\\Internet32$/i or
-            /i or
         al_dynamic_registry_key matches /.*\\\\System\\\\CurrentControlSet\\\\Control\\\\timezoneinformation\\\\standard(date|time)bias$/i or
         al_dynamic_registry_key matches /.*\\\\System\\\\(Wow6432Node\\\\)?Microsoft\\\\MSFix$/i or
         al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\WindowsFirewallSecurityServ$/i or

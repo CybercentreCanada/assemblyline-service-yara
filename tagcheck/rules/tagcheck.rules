@@ -397,18 +397,18 @@ rule AntiAVDetectReg {
     al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?TrendMicro.*/i or
     al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?VBA32$/i or
     al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Zone\\ Labs\\\\ZoneAlarm$/i or
-    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\ Microsoft\\\\Windows\\\\CurrentVersion\\\\App\\ Paths\\\\mbam.e.*/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\App\\ Paths\\\\mbam.e.*/i or
     al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\Avg.*/i or
     al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\AVP.*/i or
     al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\avast!\ Antivirus.*/i or
     al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\RsMgrSvc.*/i or
     al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\fshoster.*/i or
     al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\cmdvirth.*/i or
-    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\AVG_UI$/i or
-    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\AVP$/i or
-    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\mcui_exe$/i or
-    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\mcpltui_exe$/i or
-    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Bdagent$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\AVG_UI$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\AVP$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\mcui_exe$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\mcpltui_exe$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Bdagent$/i or
     al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Trend\\ Micro\\ Titanium$/i or
     al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Trend\\ Micro\\ Client\\ Framework$/i or
     al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\avast$/i or
@@ -556,27 +556,6 @@ rule VMwareDetectKeys {
 		category = "TECHNIQUE"
 		mitre_att = "T1012"
         technique = "anti-vm"
-        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antivm_vbox_keys.py"
-
-	condition:
-        al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?VMWare,\\ Inc\..*/i or
-        al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Clients\\\\StartMenuInternet\\\\VMWAREHOSTOPEN.EXE$/i or
-        al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?\\\\Microsoft\\\\ESENT\\\\Process\\\\vmtoolsd$/i or
-        al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Control\\\\CriticalDeviceDatabase\\\\root#vmwvmcihostdev$/i
-}
-
-rule VMwareDetectKeys {
-
-	meta:
-		version = "1.0"
-		description = "Detects VMware through the presence of a registry key"
-		source = "CAPE"
-		author = "Optiv"
-		status = "RELEASED"
-		sharing = "TLP:WHITE"
-		category = "TECHNIQUE"
-		mitre_att = "T1012"
-        technique = "anti-vm"
         origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antivm_vmware_keys.py"
 
 	condition:
@@ -602,7 +581,7 @@ rule VPCDetectKeys {
 
 	condition:
 		al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\PCI\\\\VEN_5333&DEV_8811&SUBSYS_00000000&REV_00$/i or
-		al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Services\\\\vpc-s3$/i or
+		al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Services\\\\vpc-s3$/i
 }
 
 rule XenDetectKeys {

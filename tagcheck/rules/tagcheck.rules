@@ -310,3 +310,610 @@ rule UPX_Packer_PE_Section {
 	condition:
 		al_file_pe_sections_name matches /UPX[0-9]/
 }
+
+rule AccessesNetlogonRegkey {
+
+	meta:
+		version = "1.0"
+		description = "Access the NetLogon registry key, potentially used for discovery or tampering"
+		source = "CAPE"
+		author = "bartblaze"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "discovery"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/accesses_netlogon.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*HKEY_LOCAL_MACHINE\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\Netlogon\\\\.*/i
+}
+
+rule AntiAnalysisDetectReg {
+
+	meta:
+		version = "1.0"
+		description = "Attempts to identify installed analysis tools by registry key"
+		source = "CAPE"
+		author = "Optiv"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1063"
+        technique = "discovery"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antianalysis_detectreg.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\App\\ Paths\\\\Wireshark\.exe$/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\Wireshark$/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\App\\ Paths\\\\Fiddler\.exe$/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\App\\ Paths\\\\Fiddler2\.exe$/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\Fiddler2$/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Fiddler2$/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Classes\\\\SOFTWARE\\\\IEInspectorSoft.*/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Classes\\\\IEHTTPAnalyzer\.HTTPAnalyzerAddon$/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Classes\\\\IEHTTPAnalyzerStd\.HTTPAnalyzerStandAlone$/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Classes\\\\Charles\.AMF\.Document$/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?XK72\\ Ltd\\ folder$/i
+}
+
+rule AntiAVDetectReg {
+
+	meta:
+		version = "1.0"
+		description = "Attempts to identify installed AV products by registry key"
+		source = "CAPE"
+		author = "Optiv"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "anti-av"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antiav_detectreg.py"
+
+	condition:
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Avg$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?AVAST\\ Software\\\\.*/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Avira$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Bitdefender$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?BitDefender\\\\.*/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Coranti$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Data\\ Fellows\\\\F-Secure$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Doctor\\ Web$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?ESET$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?ESET\\\\.*/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?G\\ Data$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Symantec$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?KasperskyLab\\\\.*/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?McAfee\\\\.*/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?McAfee\.com\\\\.*/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Microsoft\\ Antimalware$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Network\\ Associates\\\\TVD$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Panda\\ Software$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?rising$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Softed\\\\ViGUARD$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Sophos$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Sophos\\\\.*/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?TrendMicro.*/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?VBA32$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Zone\\ Labs\\\\ZoneAlarm$/i or
+    al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\App\\ Paths\\\\mbam.e.*/i or
+    al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\Avg.*/i or
+    al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\AVP.*/i or
+    al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\avast!\ Antivirus.*/i or
+    al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\RsMgrSvc.*/i or
+    al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\fshoster.*/i or
+    al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\services\\\\cmdvirth.*/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\AVG_UI$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\AVP$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\mcui_exe$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\mcpltui_exe$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Bdagent$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Trend\\ Micro\\ Titanium$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Trend\\ Micro\\ Client\\ Framework$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\avast$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\MSC$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\BullGuard$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Sophos\\ AutoUpdate\\ Monitor$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\SpIDerAgent$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\APVXDWIN$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\WRSVC$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\emsisoft\\ anti-malware$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\ISTray$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\G\\ Data\\ AntiVirus\\ Tray.*/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\ZoneAlarm$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Bkav$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\V3\\ Application$/i or
+    al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Baidu\\ Antivirus$/i
+}
+
+rule WineDetectReg {
+
+	meta:
+		version = "1.0"
+		description = "Detects the presence of Wine emulator via registry key"
+		source = "CAPE"
+		author = "nex"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "anti-emulation"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antiemu_wine.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*HKEY_CURRENT_USER\\Software\\Wine.*/i
+}
+
+rule BochsDetectKeys {
+
+	meta:
+		version = "1.0"
+		description = "Detects Bochs through the presence of a registry key"
+		source = "CAPE"
+		author = "Brad Spengler"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "anti-vm"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antivm_bochs_keys.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*\\\\HARDWARE\\\\ACPI\\\\(DSDT|FADT|RSDT)\\\\BOCHS_.*/i
+}
+
+rule AntiVMDiskReg {
+
+	meta:
+		version = "1.0"
+		description = "Checks the presence of disk drives in the registry, possibly for anti-virtualization"
+		source = "CAPE"
+		author = "nex"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "anti-vm"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antivm_generic_diskreg.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\IDE$/i or
+		al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Services\\\\Disk\\\\Enum\\\\.*/i or
+		al_dynamic_registry_key matches /.*\\\\HARDWARE\\\\DEVICEMAP\\\\Scsi\\\\Scsi\ Port\ 0\\\\Scsi\ Bus\ 0\\\\Target\ Id\ 0\\\\Logical\ Unit\ Id\ 0$/i
+}
+
+rule HyperVDetectKeys {
+
+	meta:
+		version = "1.0"
+		description = "Detects Hyper-V through the presence of a registry key"
+		source = "CAPE"
+		author = "Brad Spengler"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "anti-vm"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antivm_hyperv_keys.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\ACPI\\\\Hyper_V_Gen_Counter_V1$/i
+}
+
+rule ParallelsDetectKeys {
+
+	meta:
+		version = "1.0"
+		description = "Detects Parallels through the presence of a registry key"
+		source = "CAPE"
+		author = "Brad Spengler"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "anti-vm"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antivm_hyperv_keys.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\PCI\\\\VEN_1AB8&DEV_4000&SUBSYS_04001AB8&REV_00$/i or
+        al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\PCI\\\\VEN_1AB8&DEV_4005&SUBSYS_04001AB8&REV_00$/i or
+        al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\PCI\\\\VEN_1AB8&DEV_4006&SUBSYS_04061AB8&REV_00$/i
+}
+
+rule VBoxDetectKeys {
+
+	meta:
+		version = "1.0"
+		description = "Detects VirtualBox through the presence of a registry key"
+		source = "CAPE"
+		author = "nex"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "anti-vm"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antivm_vbox_keys.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Oracle\\\\VirtualBox\\ Guest\\ Additions$/i or
+        al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\Oracle\\ VM\\ VirtualBox\\ Guest\\ Additions$/i or
+        al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\PCI\\\\VEN_80EE&DEV_BEEF&SUBSYS_00000000&REV_00$/i or
+        al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\PCI\\\\VEN_80EE&DEV_CAFE&SUBSYS_00000000&REV_00$/i or
+        al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Control\\\\VirtualDeviceDrivers$/i or
+        al_dynamic_registry_key matches /.*\\\\HARDWARE\\\\ACPI\\\\(DSDT|FADT|RSDT)\\\\VBOX__.*/i
+}
+
+rule VMwareDetectKeys {
+
+	meta:
+		version = "1.0"
+		description = "Detects VMware through the presence of a registry key"
+		source = "CAPE"
+		author = "Optiv"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "anti-vm"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antivm_vmware_keys.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?VMWare,\\ Inc\..*/i or
+        al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?Clients\\\\StartMenuInternet\\\\VMWAREHOSTOPEN.EXE$/i or
+        al_dynamic_registry_key matches /.*\\\\SOFTWARE\\\\(Wow6432Node\\\\)?\\\\Microsoft\\\\ESENT\\\\Process\\\\vmtoolsd$/i or
+        al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Control\\\\CriticalDeviceDatabase\\\\root#vmwvmcihostdev$/i
+}
+
+rule VPCDetectKeys {
+
+	meta:
+		version = "1.0"
+		description = "Detects Virtual PC through the presence of a registry key"
+		source = "CAPE"
+		author = "Optiv"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "anti-vm"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antivm_vpc_keys.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\PCI\\\\VEN_5333&DEV_8811&SUBSYS_00000000&REV_00$/i or
+		al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Services\\\\vpc-s3$/i
+}
+
+rule XenDetectKeys {
+
+	meta:
+		version = "1.0"
+		description = "Detects Xen through the presence of a registry key"
+		source = "CAPE"
+		author = "Brad Spengler"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1012"
+        technique = "anti-vm"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/antivm_xen_keys.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\ACPI\\\\XEN0000.*/i or
+        al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Enum\\\\XEN.*/i or
+        al_dynamic_registry_key matches /.*\\\\HARDWARE\\\\ACPI\\\\(DSDT|FADT|RSDT)\\\\Xen.*/i
+}
+
+rule BypassFirewall {
+
+	meta:
+		version = "1.0"
+		description = "Operates on local firewall's policies and settings"
+		source = "CAPE"
+		author = "Anderson Tamborim"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1031"
+        technique = "bypass"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/bypass_firewall.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*\\\\SYSTEM\\\\(CurrentControlSet|ControlSet001)\\\\Services\\\\SharedAccess\\\\Parameters\\\\FirewallPolicy\\\\.*/i
+}
+
+rule RegistryCredentialStoreAccess {
+
+	meta:
+		version = "1.0"
+		description = "Accessed credential storage registry keys"
+		source = "CAPE"
+		author = "Kevin Ross"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1003"
+        technique = "credential dumping"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/credential_dumping.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*HKEY_LOCAL_MACHINE\\\\SAM$/i or
+		al_dynamic_registry_key matches /.*HKEY_LOCAL_MACHINE\\\\SYSTEM$/i
+}
+
+rule RegistryLSASecretsAccess {
+
+	meta:
+		version = "1.0"
+		description = "Accesses LSA Secrets that are stored in registry"
+		source = "CAPE"
+		author = "bartblaze"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1003"
+        technique = "credential dumping"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/credential_dumping.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*HKEY_LOCAL_MACHINE\\\\SECURITY\\\\Policy\\\\Secrets$/i
+}
+
+rule DarkCometRegkeys {
+
+	meta:
+		version = "1.0"
+		description = "Interacts with known DarkComet registry keys"
+		source = "CAPE"
+		author = "KillerInstinct"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+        technique = "rat"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/darkcomet_regkeys.py"
+
+	condition:
+		al_dynamic_registry_key matches /.*\\\\Software\\\\DC3_FEXEC$/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\DC3_FEXEC\\\\.*/i or
+		al_dynamic_registry_key matches /.*\\\\Software\\\\DC2_USERS$/i
+}
+
+rule FTPStealer {
+
+	meta:
+		version = "1.0"
+		description = "Harvests credentials from local FTP client softwares"
+		source = "CAPE"
+		author = "nex"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1081"
+        technique = "infostealer"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/infostealer_ftp.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Far.*\\\\Hosts$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Far.*\\\\FTPHost$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?GlobalSCAPE\\\\CuteFTP.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Ghisler\\\\Windows Commander.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Ghisler\\\\Total Commander.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?BPFTP\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?FileZilla.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?TurboFTP.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Sota\\\\FFFTP.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?FTPWare\\\\CoreFTP\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?FTP\\ Explorer\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?FTPClient\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?LinasFTP\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Robo-FTP.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?MAS-Soft\\\\FTPInfo\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?SoftX\.org\\\\FTPClient\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?NCH\\ Software\\\\CoreFTP\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?BulletProof Software\\\\BulletProof FTP Client.*/i
+}
+
+rule IMStealer {
+
+	meta:
+		version = "1.0"
+		description = "Harvests information related to installed instant messenger clients"
+		source = "CAPE"
+		author = "Optiv"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1081"
+        technique = "infostealer"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/infostealer_im.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?America\\ Online\\\\AIM6\\\\Passwords.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?AIM\\\\AIMPRO\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Beyluxe\\ Messenger\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?BigAntSoft\\\\BigAntMessenger\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Camfrog\\\\Client\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Google\\\\Google\\ Talk\\\\Accounts.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?IMVU\\\\.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Nimbuzz\\\\PCClient\\\\Application\\\\.i*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Paltalk.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Yahoo\\\\Pager\\\\.*/i
+}
+
+rule EmailStealer {
+
+	meta:
+		version = "1.0"
+		description = "Harvests information related to installed mail clients"
+		source = "CAPE"
+		author = "Optiv"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1081"
+        technique = "infostealer"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/infostealer_mail.py"
+
+	condition:
+        not al_file_path matches /.*\.(ppt)doc|xls|eml/i and (
+            al_dynamic_registry_key matches /.*\\\\Microsoft\\\\Windows\\ Messaging\\ Subsystem\\\\MSMapiApps.*/i or
+            al_dynamic_registry_key matches /.*\\\\Microsoft\\\\Windows\\ Messaging\\ Subsystem\\\\Profiles.*/i or
+            al_dynamic_registry_key matches /.*\\\\Microsoft\\\\Windows\\ NT\\\\CurrentVersion\\\\Windows\\ Messaging\/i orSubsystem\\\\Profiles.*/i or
+            al_dynamic_registry_key matches /.*\\\\Microsoft\\\\Office\\\\.*\\\\Outlook\\\\Profiles\\\\Outlook.*/i or
+            al_dynamic_registry_key matches /.*\\\\Microsoft\\\\Office\\\\Outlook\\\\OMI\\ Account\\ Manager\\\\Accounts.*/i or
+            al_dynamic_registry_key matches /.*\\\\Microsoft\\\\Internet\\ Account\\ Manager\\\\Accounts.*/i or
+            al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?IncrediMail./i or
+            al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\ Live\\ Mail.*/i
+        )
+}
+
+rule ArmadilloRegKey {
+
+	meta:
+		version = "1.0"
+		description = "Detected Armadillo packer using a known registry key"
+		source = "CAPE"
+		author = "KillerInstinct"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1045"
+        technique = "packer"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/packer_armadillo_regkey.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*\\\\The\\ Silicon\\ Realms\\ Toolworks\\\\Armadillo$/i
+}
+
+rule MedusaLockerRegkeys {
+
+	meta:
+		version = "1.0"
+		description = "Creates known MedusaLocker ransomware registry keys"
+		source = "CAPE"
+		author = "ditekshen"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1112"
+        technique = "ransomware"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/ransomware_medusalocker.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*HKEY_CURRENT_USER\\\\Software\\\\Medusa.*/i or
+        al_dynamic_registry_key matches /.*HKEY_CURRENT_USER\\\\Software\\\\Medusa\\\\.*/i
+}
+
+rule NemtyRegkeys {
+
+	meta:
+		version = "1.0"
+		description = "Creates Nemty ransomware registry keys"
+		source = "CAPE"
+		author = "ditekshen"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1112"
+        technique = "ransomware"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/ransomware_nemty.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*HKEY_CURRENT_USER\\\\Software\\\\NEMTY.*/i
+}
+
+rule LimeRATRegkeys {
+
+	meta:
+		version = "1.0"
+		description = "Creates known LimeRAT RAT registry keys"
+		source = "CAPE"
+		author = "ditekshen"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1112"
+        technique = "rat"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/rat_limerat.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*HKEY_CURRENT_USER\\\\Software\\\\3862E8D73699\\\\Flood$/i or
+        al_dynamic_registry_key matches /.*HKEY_CURRENT_USER\\\\Software\\\\3862E8D73699\\\\Rans-Status$/i or
+        al_dynamic_registry_key matches /.*HKEY_CURRENT_USER\\\\Software\\\\0E1513CB5D0B\\\\Flood$/i or
+        al_dynamic_registry_key matches /.*HKEY_CURRENT_USER\\\\Software\\\\0E1513CB5D0B\\\\Rans-Status$/i
+}
+
+rule WarzoneRATRegkeys {
+
+	meta:
+		version = "1.0"
+		description = "Creates WarzoneRAT registry keys"
+		source = "CAPE"
+		author = "ditekshen"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1112"
+        technique = "rat"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/rat_warzone.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*HKEY_CURRENT_USER\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Explorer\\\\[A-Z0-9]{10}\\\\[a-z]{4}$/i or
+        al_dynamic_registry_key matches /.*HKEY_CURRENT_USER\\\\Software\\\\_rptls\\\\Install$/i
+}
+
+rule RemcosRegkeys {
+
+	meta:
+		version = "1.0"
+		description = "Creates known Remcos registry keys"
+		source = "CAPE"
+		author = "ditekshen"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+		category = "TECHNIQUE"
+		mitre_att = "T1112"
+        technique = "rat"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/remcos.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*\\\\Software\\\\Remcos-[A-Z0-9]{6}.*/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\remcos[-_].*/i
+}
+
+rule TerritorialDisputeSIGs {
+
+	meta:
+		version = "1.0"
+		description = "Creates an indicator observed in Territorial Disputes report"
+		source = "CAPE"
+		author = "ditekshen"
+		status = "RELEASED"
+		sharing = "TLP:WHITE"
+        origin = "https://github.com/CAPESandbox/community/blob/2906408dd7d5f624c46da6301ca9b27082b95943/modules/signatures/windows/territorial_disputes_sigs.py"
+
+	condition:
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\StrtdCfg/i or
+        al_dynamic_registry_key matches /.*\\\\System\\\\CurrentControlSet\\\\Control\\\\CrashImage/i or
+        al_dynamic_registry_key matches /.*\\\\System\\\\CurrentControlSet\\\\Services\\\\systmmgmt\\\\Paramaters\\\\ServiceDll/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Policies\\\\Explorer\\\\Run\\\\ipmontr$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\Microsoft\\\\WinKernel\\\\Explorer\\\\Run\\\\ipmontr/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Policies\\\\Explorer\\\\Run\\\\Internet32$/i or
+        al_dynamic_registry_key matches /.*\\\\System\\\\CurrentControlSet\\\\Control\\\\timezoneinformation\\\\standard(date|time)bias$/i or
+        al_dynamic_registry_key matches /.*\\\\System\\\\(Wow6432Node\\\\)?Microsoft\\\\MSFix$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\WindowsFirewallSecurityServ$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\slidebar$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\MSDeviceDriver$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\Postman$/i or
+        al_dynamic_registry_key matches /.*\\\\System\\\\(Wow6432Node\\\\)?Microsoft\\\\WinMI$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\Sun\\\\.*(AppleTlk|IsoTp)$/i or
+        al_dynamic_registry_key matches /.*\\\\System\\\\(Wow6432Node\\\\)?Microsoft\\\\NetWin$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\Adobe\\\\Fix$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Explorer\\\\Streams\\\\Desktop\\\\Default\s(Statusbar|MenuBars|Taskbar|Zone)(\sSign)?/i or
+        al_dynamic_registry_key matches /.*\\\\System\\\\CurrentControlSet\\\\Services\\\\Installer\sManagement$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\MS\sQAG\\\\U\d{2}$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\ShellServiceObjectDelayLoad(\\\\NetIDS)?$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\sNT\\\\CurrentVersion\\\\winlogo\\\\Userinit$/i or
+        al_dynamic_registry_key matches /.*\\\\System\\\\CurrentControlSet\\\\Control\\\\DType\d$/i or
+        al_dynamic_registry_key matches /.*\\\\Software\\\\(Wow6432Node\\\\)?Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\Internet$/i
+}

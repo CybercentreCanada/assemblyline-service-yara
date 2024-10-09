@@ -123,7 +123,7 @@ heuristics:
 
   - heur_id: 17
     name: Suspicious YARA hit
-    score: 300
+    score: 250
     filetype: "*"
     description: "A YARA rule that detects suspicious files hit"
 

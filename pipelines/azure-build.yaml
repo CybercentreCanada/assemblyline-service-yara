@@ -1,5 +1,8 @@
 name: build
 
+variables:
+  - group: unittest-samples
+
 trigger:
   tags:
     include: ["v*"]
@@ -8,42 +11,34 @@ pr: none
 pool:
   vmImage: "ubuntu-20.04"
 
+resources:
+  repositories:
+    - repository: PipelineTemplates
+      type: github
+      name: CybercentreCanada/assemblyline-pipeline-templates
+      ref: refs/heads/multibuild_from_repo
+      endpoint: github-repo-sa
+      trigger: none
+    - repository: unittest-samples
+      type: github
+      name: $(unittest_samples_repository)
+      ref: main
+      endpoint: github-repo-sa
+      trigger: none
+
 stages:
-  - stage: deploy
-    jobs:
-      - job: deploy
-        displayName: Deploy containers to dockerhub
-        variables:
-          - group: deployment-information
-        steps:
-          - task: Docker@2
-            displayName: Login to docker hub
-            inputs:
-              command: login
-              containerRegistry: dockerhub
-          - task: Docker@2
-            displayName: Login to chimera
-            inputs:
-              command: login
-              containerRegistry: CHIMERA-U-ACR
-          - script: |
-              set -xv  # Echo commands before they are run
-              export TAG=${BUILD_SOURCEBRANCH#"refs/tags/v"}
-              if [[ "$TAG" == *stable* ]]; then export BUILD_TYPE=stable; else export BUILD_TYPE=latest; fi
-              export SERIES="`expr $TAG : '\([0-9]\+\.[0-9]\+\.\)'`${BUILD_TYPE}"
+  # Deploy YARA service
+  - template: stages/deploy-service.yaml@PipelineTemplates
+    parameters:
+      labels:
+        classification: "UNCLASSIFIED"
+      dockerfile_path: ./yara_/Dockerfile
+      readme_path: ./yara_/README.md
 
-              docker build --build-arg version=$TAG --build-arg branch=$BUILD_TYPE -t cccs/assemblyline-service-yara:$TAG -t cccs/assemblyline-service-yara:$BUILD_TYPE -f ./yara_/Dockerfile .
-
-              docker build --build-arg version=$TAG --build-arg build_type=$BUILD_TYPE -t cccs/assemblyline-service-tagcheck:$TAG -t cccs/assemblyline-service-tagcheck:$BUILD_TYPE -f ./tagcheck/Dockerfile .
-
-              for SERVICE in "assemblyline-service-yara" "assemblyline-service-tagcheck"
-              do
-                for IMAGE in "cccs/" "uchimera.azurecr.io/cccs/"
-                do
-                  docker tag cccs/${SERVICE}:$BUILD_TYPE ${IMAGE}${SERVICE}:$TAG
-                  docker tag cccs/${SERVICE}:$BUILD_TYPE ${IMAGE}${SERVICE}:$BUILD_TYPE
-                  docker tag cccs/${SERVICE}:$BUILD_TYPE ${IMAGE}${SERVICE}:$SERIES
-                  docker push ${IMAGE}${SERVICE} --all-tags
-                done
-              done
-            displayName: Deploy to container repositories
+  # Deploy TagCheck service
+  - template: stages/deploy-service.yaml@PipelineTemplates
+    parameters:
+      labels:
+        classification: "UNCLASSIFIED"
+      dockerfile_path: ./tagcheck/Dockerfile
+      readme_path: ./tagcheck/README.md

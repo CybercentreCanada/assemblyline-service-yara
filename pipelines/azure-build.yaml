@@ -34,6 +34,7 @@ stages:
         classification: "UNCLASSIFIED"
       dockerfile_path: ./yara_/Dockerfile
       readme_path: ./yara_/README.md
+      service_name: YARA
 
   # Deploy TagCheck service
   - template: stages/deploy-service.yaml@PipelineTemplates
@@ -42,3 +43,4 @@ stages:
         classification: "UNCLASSIFIED"
       dockerfile_path: ./tagcheck/Dockerfile
       readme_path: ./tagcheck/README.md
+      service_name: TagCheck

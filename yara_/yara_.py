@@ -450,8 +450,11 @@ class Yara(ServiceBase):
 
         yara_externals = {}
         for k in self.yara_externals.keys():
+            # Externals are always prepended with al_
+            clean_key = k[3:]
+
             # Check default request.task fields
-            sval = request.task.__dict__.get(k, None)
+            sval = getattr(request.task, clean_key, None)
 
             # if not sval:
             #     # Check metadata dictionary
@@ -459,7 +462,7 @@ class Yara(ServiceBase):
 
             if not sval:
                 # Check params dictionary
-                sval = request.task.service_config.get(k, None)
+                sval = request.task.service_config.get(clean_key, None)
 
             if not sval:
                 # Check tags list
@@ -469,7 +472,7 @@ class Yara(ServiceBase):
 
             if not sval:
                 # Check temp submission data
-                sval = request.task.temp_submission_data.get(k, None)
+                sval = request.task.temp_submission_data.get(clean_key, None)
 
             # Normalize unicode with safe_str and make sure everything else is a string
             if sval:

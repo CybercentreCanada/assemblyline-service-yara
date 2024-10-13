@@ -10,7 +10,7 @@ from plyara import Plyara, utils
 
 DEFAULT_STATUS = "DEPLOYED"
 Classification = forge.get_classification()
-YARA_EXTERNALS = ["submitter", "mime", "file_type", "tag", "file_name"]
+YARA_EXTERNALS = ["submitter", "mime", "file_type", "tag", "file_name", "file_size"]
 
 
 class YaraImporter(object):

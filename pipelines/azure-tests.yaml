@@ -14,7 +14,7 @@ resources:
     - repository: PipelineTemplates
       type: github
       name: CybercentreCanada/assemblyline-pipeline-templates
-      ref: refs/heads/main
+      ref: refs/heads/multibuild_from_repo
       endpoint: github-repo-sa
       trigger: none
     - repository: unittest-samples
@@ -24,9 +24,19 @@ resources:
       endpoint: github-repo-sa
       trigger: none
 
-extends:
-  template: stages/test-service.yaml@PipelineTemplates
-  parameters:
-    samples_repo: unittest-samples
-    test_container: "true"
-    
+stages:
+  # Test YARA service
+  - template: stages/deploy-service.yaml@PipelineTemplates
+    parameters:
+      samples_repo: unittest-samples
+      test_container: "true"
+      dockerfile_path: ./yara_/Dockerfile
+      service_name: YARA
+
+  # Test TagCheck service
+  - template: stages/deploy-service.yaml@PipelineTemplates
+    parameters:
+      samples_repo: unittest-samples
+      test_container: "true"
+      dockerfile_path: ./tagcheck/Dockerfile
+      service_name: TagCheck

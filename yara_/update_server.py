@@ -10,7 +10,7 @@ from assemblyline.common import forge
 from assemblyline_v4_service.updater.updater import ServiceUpdater
 from plyara import Plyara, utils
 
-from yara_.helper import YARA_EXTERNALS, YaraImporter, YaraValidator
+from yara_.helper import externals_to_dict, YARA_EXTERNALS, YaraImporter, YaraValidator
 
 classification = forge.get_classification()
 
@@ -81,7 +81,7 @@ def replace_include(include, dirname, processed_files: set[str], cur_logger: log
 class YaraUpdateServer(ServiceUpdater):
     def __init__(self, *args, externals: list[str], **kwargs):
         super().__init__(*args, **kwargs)
-        self.externals = {f'al_{x.replace(".", "_")}': "" for x in externals}
+        self.externals = externals_to_dict(externals)
 
     # A sanity check to make sure we do in fact have things to send to services
     def _inventory_check(self) -> bool:

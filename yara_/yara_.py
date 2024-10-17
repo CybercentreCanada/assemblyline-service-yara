@@ -11,7 +11,7 @@ from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.result import BODY_FORMAT, Heuristic, Result, ResultSection
 
-from yara_.helper import YARA_EXTERNALS, YaraMetadata, YaraValidator
+from yara_.helper import externals_to_dict, YARA_EXTERNALS, YaraMetadata, YaraValidator
 
 
 class Yara(ServiceBase):
@@ -61,7 +61,7 @@ class Yara(ServiceBase):
         self.sha256 = None
 
         # Load externals
-        self.yara_externals = {f'al_{x.replace(".", "_")}': "" for x in externals}
+        self.yara_externals = externals_to_dict(externals)
 
         # Set configuration flags to 4 times the default
         yara.set_config(max_strings_per_rule=40000, stack_size=65536)

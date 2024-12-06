@@ -84,11 +84,13 @@ class YaraImporter(object):
             # Convert CCCS YARA status to AL signature status
             if status == "RELEASED":
                 status = "DEPLOYED"
-            elif status == "DEPRECATED":
+            elif status in ["DEPRECATED", "INVALID"]:
                 status = "DISABLED"
+            elif status in ["TESTING", "STAGING"]:
+                status = "NOISY"
 
             # Fallback status
-            if status not in ["DEPLOYED", "NOISY", "DISABLED", "STAGING", "TESTING", "INVALID"]:
+            if status not in ["DEPLOYED", "NOISY", "DISABLED"]:
                 status = default_status
 
             # Fix imports and remove cuckoo

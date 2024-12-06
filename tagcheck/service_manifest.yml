@@ -138,7 +138,7 @@ update_config:
   generates_signatures: true
   sources:
     - name: CCCS
-      uri: https://raw.githubusercontent.com/CybercentreCanada/assemblyline-service-yara/refs/heads/master/tagcheck/rules/tagcheck.rules
+      uri: https://github.com/CybercentreCanada/assemblyline-service-yara.git
       pattern: .*tagcheck\.rules
   update_interval_seconds: 86400 # 24 hours
   wait_for_update: false

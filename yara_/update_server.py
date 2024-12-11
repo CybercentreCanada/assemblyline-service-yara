@@ -117,7 +117,9 @@ class YaraUpdateServer(ServiceUpdater):
 
         return check_passed
 
-    def import_update(self, files_sha256, source_name: str, default_classification=classification.UNRESTRICTED):
+    def import_update(
+        self, files_sha256, source_name: str, default_classification=classification.UNRESTRICTED, *args, **kwargs
+    ):
         processed_files: set[str] = set()
 
         with tempfile.NamedTemporaryFile(mode="a+", suffix=source_name) as compiled_file:

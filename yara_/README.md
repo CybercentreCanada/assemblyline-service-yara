@@ -123,7 +123,7 @@ sources:
     uri: https://github.com/Yara-Rules/rules.git
 ```
 
-Il s'exécutera toutes les 24 heures, récupérera toutes les règles trouvées dans le repo git à l'URL spécifiée et s'assurera qu'elles sont synchronisées dans le système.
+Il s'exécutera toutes les 24 heures, récupérera toutes les règles trouvées dans le répertoire git à l'URL spécifiée et s'assurera qu'elles sont synchronisées dans le système.
 
 ## Variantes et étiquettes d'image
 

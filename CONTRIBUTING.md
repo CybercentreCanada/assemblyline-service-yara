@@ -43,8 +43,8 @@ Le code Python doit suivre les directives PEP8 définies ici:
 
 Avant de commencer à coder quoi que ce soit, vous devriez vous connecter à la communauté Assemblyline via le
 [Serveur Discord Assemblyline](https://discord.gg/GUAy9wErNu) et/ou le
-[projet GitHub central Assemblyline](https://github.com/CybercentreCanada/assemblyline/issues) pour vous assurer que
-personne d'autre ne travaille sur la même chose et que tout ce que vous allez construire correspond toujours à la vision
+[projet GitHub central Assemblyline](https://github.com/CybercentreCanada/assemblyline/issues) pour vous assurer qu'il
+n'y a personne d'autre qui travaille sur la même chose et que votre changement correspond à la vision
 du système.
 
 ## Flux de travail avec Git

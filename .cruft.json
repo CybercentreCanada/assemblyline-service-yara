@@ -10,7 +10,7 @@
       "__pkg_name": "yara",
       "__class_name": "Yara",
       "short_description": "This Assemblyline service runs the YARA application against all file types.",
-      "short_description_fr": "Ce service de la ligne d'assemblage exécute l'application YARA pour tous les types de fichiers.",
+      "short_description_fr": "Ce service d'Assemblyline exécute l'application YARA pour tous les types de fichiers.",
       "stage": "CORE",
       "category": "Static Analysis",
       "org_name_full": "CybercentraCanada",

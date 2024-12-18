@@ -131,7 +131,7 @@ al_(nom_de_la_balise) où les '.' du nom de la balise sont remplacés par des '_
 
 De la manière dont les éléments externes sont implémentés dans YARA, nous ne pouvons pas donner une liste de valeurs pour un champ de type de balise. Par conséquent, s'il y a plusieurs valeurs pour un type de balise, elles seront concaténées à l'aide de pipes.
 
-Par exemple, si un résultat a les balises network.static.ip suivantes : 127.0.0.1, 127.0.0.11. Ceci sera représenté dans les externes de Yara comme : « 127.0.0.1 | 127.0.1.1 ». Cela signifie que vous ne pouvez pas utiliser de correspondances exactes dans votre signature et que vous ne pouvez pas utiliser de regex startswith et endswith (^$) parce que vous ne savez pas combien de balises d'un type différent ont été générées.
+Par exemple, si un résultat a les balises network.static.ip suivantes : 127.0.0.1, 127.0.0.11. Ceci sera représenté dans les externes de Yara comme : " 127.0.0.1 | 127.0.1.1 ". Cela signifie que vous ne pouvez pas utiliser de correspondances exactes dans votre signature et que vous ne pouvez pas utiliser de regex startswith et endswith (^$) parce que vous ne savez pas combien de balises d'un type différent ont été générées.
 
 Cela dit, vous pouvez utiliser les délimiteurs de mots pour trouver une correspondance exacte. Ainsi, si vous vouliez faire correspondre l'IP de localhost dans l'exemple précédent, vous pourriez utiliser ce qui suit :
 
@@ -152,7 +152,7 @@ Les services d'Assemblyline utilisent les définitions d'étiquettes suivantes:
 
 ## Exécution de ce service
 
-Il s'agit d'un service d'Assemblyline. Il est optimisé pour fonctionner dans le cadre d'un déploiement d'Assemblyline.
+Ce service est spécialement optimisé pour fonctionner dans le cadre d'un déploiement d'Assemblyline.
 
 Si vous souhaitez tester ce service localement, vous pouvez exécuter l'image Docker directement à partir d'un terminal:
 

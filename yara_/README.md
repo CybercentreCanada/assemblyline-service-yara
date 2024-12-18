@@ -1,9 +1,10 @@
 [![Discord](https://img.shields.io/badge/chat-on%20discord-7289da.svg?sanitize=true)](https://discord.gg/GUAy9wErNu)
 [![](https://img.shields.io/discord/908084610158714900)](https://discord.gg/GUAy9wErNu)
 [![Static Badge](https://img.shields.io/badge/github-assemblyline-blue?logo=github)](https://github.com/CybercentreCanada/assemblyline)
-[![Static Badge](https://img.shields.io/badge/github-assemblyline\_service\_yara-blue?logo=github)](https://github.com/CybercentraCanada/assemblyline-service-yara)
+[![Static Badge](https://img.shields.io/badge/github-assemblyline_service_yara-blue?logo=github)](https://github.com/CybercentraCanada/assemblyline-service-yara)
 [![GitHub Issues or Pull Requests by label](https://img.shields.io/github/issues/CybercentreCanada/assemblyline/service-yara)](https://github.com/CybercentreCanada/assemblyline/issues?q=is:issue+is:open+label:service-yara)
 [![License](https://img.shields.io/github/license/CybercentraCanada/assemblyline-service-yara)](./LICENSE)
+
 # Yara Service
 
 This Assemblyline service runs the YARA application against all file types.
@@ -14,35 +15,36 @@ This Assemblyline service runs the YARA application against all file types.
 
 Currently AL runs YARA 4.3.0, and therefore supports the following external modules:
 
-* Dotnet
-* ELF
-* Hash
-* Magic
-* Math
-* PE
+- Dotnet
+- ELF
+- Hash
+- Magic
+- Math
+- PE
 
 ### Signature Creation
 
- AL YARA rules follow the CCCS standard. Detailed information on writing YARA rules, as well as the MALWARE standard, can be found at the following locations:
+AL YARA rules follow the CCCS standard. Detailed information on writing YARA rules, as well as the MALWARE standard, can be found at the following locations:
 
- Rule creation:
+Rule creation:
 
- * https://yara.readthedocs.io/en/v4.3.0/
+- https://yara.readthedocs.io/en/v4.3.0/
 
- CCCS Standard:
+CCCS Standard:
 
- * https://github.com/CybercentreCanada/CCCS-Yara
+- https://github.com/CybercentreCanada/CCCS-Yara
 
 ### Signature sources
 
 Yara uses signature sources to sync it's signature set at a given interval:
 
 The default configured source is the following:
+
 ```yaml
-    sources:
-    - name: yr_git
-      pattern: .*_index.yar$
-      uri: https://github.com/Yara-Rules/rules.git
+sources:
+  - name: yr_git
+    pattern: .*_index.yar$
+    uri: https://github.com/Yara-Rules/rules.git
 ```
 
 It will run every 24 hours, fetch all rules found in the git repo at the specified URL and make sure they are in sync in the system.
@@ -89,35 +91,36 @@ Ce service de la ligne d'assemblage exécute l'application YARA pour tous les ty
 
 Actuellement, AL exécute YARA 4.3.0, et supporte donc les modules externes suivants :
 
-* Dotnet
-* ELF
-* Hash
-* Magic
-* Math
-* PE
+- Dotnet
+- ELF
+- Hash
+- Magic
+- Math
+- PE
 
 ### Création de signatures
 
- Les règles AL YARA suivent la norme CCCS. Des informations détaillées sur l'écriture des règles YARA, ainsi que sur la norme MALWARE, sont disponibles aux endroits suivants :
+Les règles AL YARA suivent la norme CCCS. Des informations détaillées sur l'écriture des règles YARA, ainsi que sur la norme MALWARE, sont disponibles aux endroits suivants :
 
- Création de règles :
+Création de règles :
 
- * https://yara.readthedocs.io/en/v4.3.0/
+- https://yara.readthedocs.io/en/v4.3.0/
 
- Norme CCCS :
+Norme CCCS :
 
- * https://github.com/CybercentreCanada/CCCS-Yara
+- https://github.com/CybercentreCanada/CCCS-Yara
 
 ### Sources de signature
 
 Yara utilise des sources de signatures pour synchroniser son jeu de signatures à un intervalle donné :
 
 La source configurée par défaut est la suivante :
+
 ```yaml
-    sources :
-    - name : yr_git
-      motif : .*_index.yar$
-      uri : https://github.com/Yara-Rules/rules.git
+sources:
+  - name: yr_git
+    pattern: .*_index.yar$
+    uri: https://github.com/Yara-Rules/rules.git
 ```
 
 Il s'exécutera toutes les 24 heures, récupérera toutes les règles trouvées dans le repo git à l'URL spécifiée et s'assurera qu'elles sont synchronisées dans le système.
@@ -137,7 +140,7 @@ Les services d'Assemblyline utilisent les définitions d'étiquettes suivantes:
 
 ## Exécution de ce service
 
-Il s'agit d'un service d'Assemblyline. Il est optimisé pour fonctionner dans le cadre d'un déploiement d'Assemblyline.
+Ce service est spécialement optimisé pour fonctionner dans le cadre d'un déploiement d'Assemblyline.
 
 Si vous souhaitez tester ce service localement, vous pouvez exécuter l'image Docker directement à partir d'un terminal:
 

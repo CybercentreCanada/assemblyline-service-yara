@@ -1,12 +1,10 @@
-name: build
+name: tests
 
 variables:
   - group: unittest-samples
 
-trigger:
-  tags:
-    include: ["v*"]
-pr: none
+trigger: ["*"]
+pr: ["*"]
 
 pool:
   vmImage: "ubuntu-20.04"
@@ -27,21 +25,18 @@ resources:
       trigger: none
 
 stages:
-  # Deploy YARA service
-  - template: stages/deploy-service.yaml@PipelineTemplates
+  # Test YARA service
+  - template: stages/test-service.yaml@PipelineTemplates
     parameters:
-      labels:
-        classification: "UNCLASSIFIED"
+      samples_repo: unittest-samples
+      test_container: "true"
       dockerfile_path: ./yara_/Dockerfile
-      readme_path: ./yara_/README.md
       service_name: YARA
 
-  # Deploy TagCheck service
-  - template: stages/deploy-service.yaml@PipelineTemplates
+  # Test TagCheck service
+  - template: stages/test-service.yaml@PipelineTemplates
     parameters:
-      labels:
-        classification: "UNCLASSIFIED"
+      samples_repo: unittest-samples
+      test_container: "true"
       dockerfile_path: ./tagcheck/Dockerfile
-      readme_path: ./tagcheck/README.md
       service_name: TagCheck
-      repo_override: assemblyline-service-tagcheck

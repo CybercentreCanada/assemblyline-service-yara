@@ -1,10 +1,9 @@
 import json
 import os
-import threading
 from collections import defaultdict
 from typing import List
 
-import yara
+import yara_x
 from assemblyline.common.attack_map import attack_map, software_map
 from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results import Signature
@@ -56,20 +55,17 @@ class Yara(ServiceBase):
         if externals is None:
             externals = YARA_EXTERNALS
 
-        self.initialization_lock = threading.RLock()
         self.deep_scan = None
         self.sha256 = None
 
         # Load externals
         self.yara_externals = externals_to_dict(externals)
-
-        # Set configuration flags to 4 times the default
-        yara.set_config(max_strings_per_rule=40000, stack_size=65536)
+        self.rules: yara_x.Scanner = None
 
     def start(self):
         self.log.info(f"{self.name} started with service version: {self.get_service_version()}")
 
-    def _add_resultinfo_for_match(self, result: Result, match):
+    def _add_resultinfo_for_match(self, result: Result, match: yara_x.Rule, data: bytes):
         """
         Parse from Yara signature match and add information to the overall AL service result. This module determines
         result score and identifies any AL tags that should be added (i.e. IMPLANT_NAME, THREAT_ACTOR, etc.).
@@ -90,7 +86,7 @@ class Yara(ServiceBase):
         if almeta.mitre_att:
             attacks = almeta.mitre_att if isinstance(almeta.mitre_att, list) else [almeta.mitre_att]
 
-        sig_meta_key = match.rule
+        sig_meta_key = match.identifier
         if sig_meta_key not in self.signatures_meta:
             # Key might be based of the ID metadata of the rule
             sig_meta_key = almeta.id
@@ -99,7 +95,7 @@ class Yara(ServiceBase):
 
         section = ResultSection("", classification=signature_meta["classification"])
         # Allow the al_score meta in a YARA rule to override default scoring
-        sig = f"{match.namespace}.{match.rule}"
+        sig = f"{match.namespace}.{match.identifier}"
         try:
             score_map = {sig: int(almeta.al_score)} if almeta.al_score else None
         except ValueError:
@@ -108,7 +104,7 @@ class Yara(ServiceBase):
 
         # If there's multiple categories, assign the highest for scoring
         heur = Heuristic(1, score_map=score_map)
-        if any([term.lower().startswith("susp") for term in almeta.name.split("_") + match.tags]):
+        if any([term.lower().startswith("susp") for term in match.identifier.split("_") + list(match.tags)]):
             # If the rule name indicates suspiciousness about the match, then score accordingly
             heur = Heuristic(17, score_map=score_map)
         elif isinstance(almeta.category, list):
@@ -133,7 +129,7 @@ class Yara(ServiceBase):
                 }
             ],
             "signature_id": sig_meta_key,
-            "classification": signature_meta["classification"]
+            "classification": signature_meta["classification"],
         }
 
         ont_data["attributes"][0]["source"]["ontology_id"] = Signature.get_oid(ont_data)
@@ -145,7 +141,7 @@ class Yara(ServiceBase):
         section.add_tag(f"file.rule.{self.name.lower()}", sig)
 
         title_elements = [
-            f"[{match.namespace}] {match.rule}",
+            f"[{match.namespace}] {match.identifier}",
         ]
 
         if almeta.actor_type:
@@ -204,7 +200,7 @@ class Yara(ServiceBase):
         section.title_text = title
 
         json_body = dict(
-            name=match.rule,
+            name=match.identifier,
         )
 
         for item in [
@@ -226,7 +222,7 @@ class Yara(ServiceBase):
             if val:
                 json_body[item] = val
 
-        string_match_data = self._add_string_match_data(match)
+        string_match_data = self._add_string_match_data(match, data)
         if string_match_data:
             json_body["string_hits"] = string_match_data
 
@@ -261,7 +257,7 @@ class Yara(ServiceBase):
         result.add_section(section)
         # result.order_results_by_score() TODO: should v4 support this?
 
-    def _add_string_match_data(self, match) -> List[str]:
+    def _add_string_match_data(self, match, data: bytes) -> List[str]:
         """
         Parses and adds matching strings from a Yara match object to an AL ResultSection.
 
@@ -272,26 +268,13 @@ class Yara(ServiceBase):
             None.
         """
         string_hits = []
-        strings = match.strings
         string_dict = defaultdict(list)
-        try:
-            for offset, identifier, data in strings:
-                string_dict[data].append((offset, identifier))
-        except TypeError:  # Breaking change in https://github.com/VirusTotal/yara-python/releases/tag/v4.3.0
-            strings = match.strings  # List[yara.StringMatch]
-
-            for string_match in strings:  # yara.StringMatch
-                assert isinstance(string_match, yara.StringMatch)
-                identifier = string_match.identifier
-                # is_xor = string_match.is_xor()
-                for smi in string_match.instances:
-                    matched_data = smi.matched_data
-                    # matched_length = smi.matched_length
-                    offset = smi.offset
-                    # if is_xor:
-                    #     xor_key = smi.xor_key
-                    #     matched_data = smi.plaintext()
-                    string_dict[matched_data].append((offset, identifier))
+        for pattern in match.patterns:
+            if not pattern.matches:
+                continue
+            for m in pattern.matches:
+                matched_data = data[m.offset : m.length]
+                string_dict.setdefault(matched_data, []).append((m.offset, pattern.identifier))
 
         result_dict = {}
         for string_value, string_list in string_dict.items():
@@ -351,7 +334,7 @@ class Yara(ServiceBase):
 
         return string_hits
 
-    def _extract_result_from_matches(self, matches):
+    def _extract_result_from_matches(self, matches: List[yara_x.Rule], data: bytes):
         """
         Iterate through Yara match object and send to parser.
 
@@ -363,7 +346,7 @@ class Yara(ServiceBase):
         """
         result = Result()
         for match in matches:
-            self._add_resultinfo_for_match(result, match)
+            self._add_resultinfo_for_match(result, match, data)
         return result
 
     @staticmethod
@@ -419,24 +402,27 @@ class Yara(ServiceBase):
         try:
             # Validate rules using the validator
             validator = YaraValidator(externals=self.yara_externals, logger=self.log)
-            [validator.validate_rules(yf) for yf in self.rules_list]
+            # [validator.validate_rules(yf) for yf in self.rules_list]
 
-            rules = yara.compile(
-                filepaths={os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list},
-                externals=self.yara_externals,
-            )
+            # Initialize Yara compiler
+            compiler = yara_x.Compiler(relaxed_re_syntax=True)
 
-            if rules:
-                with self.initialization_lock:
-                    self.rules = rules
-            else:
-                raise Exception("yara.compile() didn't output any rules. Check if service can reach the updater.")
+            # Define globals/externals before compiling rules
+            [compiler.define_global(ident, value) for ident, value in self.yara_externals.items()]
+
+            # Add sources to respective namespaces
+            for yara_rule_path in self.rules_list:
+                namespace = os.path.splitext(os.path.basename(yara_rule_path))[0]
+                compiler.new_namespace(namespace)
+                with open(yara_rule_path, "r") as yara_rule_file:
+                    compiler.add_source(src=yara_rule_file.read(), origin=namespace)
+
+            self.rules = yara_x.Scanner(compiler.build())
         except Exception as e:
             raise Exception(f"No valid {self.name} rules files found. Reason: {e}")
 
     # noinspection PyBroadException
     def execute(self, request):
-        """Main Module. See README for details."""
         if not self.rules:
             return
 
@@ -445,7 +431,6 @@ class Yara(ServiceBase):
         request.set_service_context(f"{self.name} version: {self.get_yara_version()}")
 
         self.deep_scan = request.task.deep_scan
-        local_filename = request.file_path
         tags = {f"al_{k.replace('.', '_')}": i for k, i in request.task.tags.items()}
 
         yara_externals = {}
@@ -477,36 +462,19 @@ class Yara(ServiceBase):
             # Normalize unicode with safe_str and make sure everything else is a string
             if sval:
                 yara_externals[k] = safe_str(sval)
+            else:
+                # Use default values
+                yara_externals[k] = self.yara_externals[k]
 
-        with self.initialization_lock:
-            try:
-                matches = self.rules.match(local_filename, externals=yara_externals, allow_duplicate_metadata=True)
-                request.result = self._extract_result_from_matches(matches)
-            except Exception as e:
-                # Internal error 30 == exceeded max string matches on rule
-                if "internal error: 30" not in str(e):
-                    raise
-                else:
-                    try:
-                        # Fast mode == Yara skips strings already found
-                        matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
-                        result = self._extract_result_from_matches(matches)
-                        section = ResultSection("Service Warnings", parent=result)
-                        section.add_line(
-                            "Too many matches detected with current ruleset. "
-                            f"{self.name} forced to scan in fast mode."
-                        )
-                        request.result = result
-                    except Exception:
-                        self.log.warning(f"YARA internal error 30 detected on submission {request.task.sid}")
-                        result = Result()
-                        section = ResultSection(f"{self.name} scan not completed.", parent=result)
-                        section.add_line("File returned too many matches with current rule set and YARA exited.")
-                        request.result = result
+        [self.rules.set_global(k, v) for k, v in yara_externals.items()]
+        data = request.file_contents
+        matches: yara_x.ScanResults = self.rules.scan(data)
+        request.result = self._extract_result_from_matches(matches.matching_rules, data)
         self.sha256 = None
 
     def get_yara_version(self):
-        return yara.YARA_VERSION
+        # TODO: Set actual version of yara-x
+        return "yara-x"
 
     def get_tool_version(self):
         """

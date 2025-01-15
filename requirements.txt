@@ -1,2 +1,4 @@
 assemblyline
 assemblyline-v4-service
+plyara
+yara-x

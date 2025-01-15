@@ -12,10 +12,13 @@
             "cwd": "${workspaceFolder}",
             "args": [
                 "-d",
-                "yara.yara.Yara",
+                "yara_.yara_.Yara",
                 "${file}"
             ],
             "justMyCode": false,
+            "env": {
+                "MANIFEST_FOLDER": "yara_"
+            }
         },
     ]
 }

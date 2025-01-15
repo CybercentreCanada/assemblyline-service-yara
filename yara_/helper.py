@@ -2,7 +2,8 @@ import logging
 import os
 import re
 
-import yara
+import yara_
+import yara_x
 from assemblyline.common import forge
 from assemblyline.odm.models.signature import Signature
 from assemblyline_v4_service.updater.client import UpdaterClient
@@ -244,7 +245,10 @@ class YaraValidator(object):
                         # Disable offending rule from Signatures API
                         sig_id = al_client.datastore.signature.search(
                             f"type:yara AND source:{os.path.basename(rulefile)} AND name:{invalid_rule_name}",
-                            rows=1, fl="id", as_obj=False)['items'][0]["id"]
+                            rows=1,
+                            fl="id",
+                            as_obj=False,
+                        )["items"][0]["id"]
                         self.log.warning(f"Disabling rule with signature_id {sig_id} because of: {error}")
                         al_client.signature.change_status(sig_id, "DISABLED")
                 except Exception as ve:
@@ -258,13 +262,18 @@ class YaraMetadata(object):
         packer="T1045", cryptography="T1032", obfuscation="T1027", keylogger="T1056", shellcode="T1055"
     )
 
-    def __init__(self, match):
-        meta = match.meta
+    def __init__(self, match: yara_x.Match):
+        # Convert the meta list to a dictionary
+        meta = {}
+        for m in match.metadata:
+            meta.setdefault(m[0], []).append(m[1])
+
+        # Convert lists with only one element to a single value
         for k, v in meta.items():
             if len(v) == 1:
                 meta[k] = v[0]
 
-        self.name = match.rule
+        self.name = match.identifier
         self.id = meta.get("id", meta.get("rule_id", meta.get("signature_id", None)))
         self.category = meta.get("category", meta.get("rule_group", "info"))
         self.malware_type = meta.get("malware_type", None)

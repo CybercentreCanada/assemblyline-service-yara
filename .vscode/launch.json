@@ -12,7 +12,7 @@
             "cwd": "${workspaceFolder}",
             "args": [
                 "-d",
-                "yara.yara.Yara",
+                "yara_.yara_.Yara",
                 "${file}"
             ],
             "justMyCode": false,
@@ -28,7 +28,7 @@
             "env": {
                 "SERVICE_MANIFEST_PATH": "service_manifest.yml",
                 "PRIVILEGED": "true",
-                "SERVICE_PATH": "yara.yara.Yara",
+                "SERVICE_PATH": "yara_.yara_.Yara",
                 "TASKING_DIR": "/tmp/Yara"
             },
             "console": "internalConsole",

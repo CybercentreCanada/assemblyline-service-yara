@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "RunServiceOnce",
+            "name": "RunServiceOnce Yara",
             "type": "python",
             "request": "launch",
             "module": "assemblyline_v4_service.dev.run_service_once",
@@ -16,6 +16,55 @@
                 "${file}"
             ],
             "justMyCode": false,
+            "env": {
+                "MANIFEST_FOLDER": "yara_"
+            }
         },
+        {
+            "name": "[Service] Yara - Privileged",
+            "type": "python",
+            "request": "launch",
+            "module": "assemblyline_v4_service.run_privileged_service",
+            "env": {
+                "SERVICE_MANIFEST_PATH": "service_manifest.yml",
+                "PRIVILEGED": "true",
+                "SERVICE_PATH": "yara.yara.Yara",
+                "TASKING_DIR": "/tmp/Yara"
+            },
+            "console": "internalConsole",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+        },
+        {
+            "name": "RunServiceOnce TagCheck",
+            "type": "python",
+            "request": "launch",
+            "module": "assemblyline_v4_service.dev.run_service_once",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "-d",
+                "tagcheck.tagcheck.TagCheck",
+                "${file}"
+            ],
+            "justMyCode": false,
+            "env": {
+                "MANIFEST_FOLDER": "tagcheck"
+            }
+        },
+        {
+            "name": "[Service] TagCheck - Privileged",
+            "type": "python",
+            "request": "launch",
+            "module": "assemblyline_v4_service.run_privileged_service",
+            "env": {
+                "SERVICE_MANIFEST_PATH": "service_manifest.yml",
+                "PRIVILEGED": "true",
+                "SERVICE_PATH": "tagcheck.tagcheck.TagCheck",
+                "TASKING_DIR": "/tmp/TagCheck"
+            },
+            "console": "internalConsole",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+        }
     ]
 }

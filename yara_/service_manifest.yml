@@ -157,3 +157,4 @@ update_config:
       sync: true
   update_interval_seconds: 86400 # 24 hours
   wait_for_update: true
+  default_pattern: ".*\\.yar(a)?"

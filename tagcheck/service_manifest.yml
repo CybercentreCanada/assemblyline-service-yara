@@ -142,3 +142,4 @@ update_config:
       pattern: .*tagcheck\.rules
   update_interval_seconds: 86400 # 24 hours
   wait_for_update: false
+  default_pattern: ".*\\.rules"

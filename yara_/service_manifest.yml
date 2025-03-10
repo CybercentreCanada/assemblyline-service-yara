@@ -155,5 +155,14 @@ update_config:
     - name: reversinglabs
       uri: https://github.com/reversinglabs/reversinglabs-yara-rules.git
       sync: true
+    - name: valhalla
+      uri: https://valhalla.nextron-systems.com/api/v1/get
+      sync: true
+      data: "apikey=1111111111111111111111111111111111111111111111111111111111111111&format=text"
+      headers:
+        - name: Content-Type
+          value: application/x-www-form-urlencoded
+      fetch_method: "POST"
   update_interval_seconds: 86400 # 24 hours
   wait_for_update: true
+  default_pattern: ".*\\.yar(a)?"

@@ -6,11 +6,11 @@ import re
 import tempfile
 from typing import Any, Optional
 
-from assemblyline.common import forge
 from assemblyline_v4_service.updater.updater import ServiceUpdater
 from plyara import Plyara, utils
+from yara_.helper import YARA_EXTERNALS, YaraImporter, YaraValidator, externals_to_dict
 
-from yara_.helper import externals_to_dict, YARA_EXTERNALS, YaraImporter, YaraValidator
+from assemblyline.common import forge
 
 classification = forge.get_classification()
 
@@ -79,9 +79,7 @@ def replace_include(include, dirname, processed_files: set[str], cur_logger: log
 
 
 class YaraUpdateServer(ServiceUpdater):
-    def __init__(self, *args, externals: list[str], **kwargs):
-        super().__init__(*args, **kwargs)
-        self.externals = externals_to_dict(externals)
+    externals = externals_to_dict(YARA_EXTERNALS)
 
     # A sanity check to make sure we do in fact have things to send to services
     def _inventory_check(self) -> bool:
@@ -190,5 +188,5 @@ class YaraUpdateServer(ServiceUpdater):
 
 
 if __name__ == "__main__":
-    with YaraUpdateServer(externals=YARA_EXTERNALS, default_pattern=".*\.yar(a)?") as server:
+    with YaraUpdateServer() as server:
         server.serve_forever()

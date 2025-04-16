@@ -324,7 +324,7 @@ class YaraMetadata(object):
         if self.al_tag:
             tags = self.al_tag.split(",") if isinstance(self.al_tag, str) else self.al_tag
             for tag in tags:
-                tokens = tag.split(":")
+                tokens = tag.split(":", 1)
                 if len(tokens) == 2:
                     self.tags.append({"type": tokens[0], "value": tokens[1]})
 

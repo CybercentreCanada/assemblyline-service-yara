@@ -9,9 +9,14 @@ from assemblyline.common.attack_map import attack_map, software_map
 from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
-from assemblyline_v4_service.common.result import BODY_FORMAT, Heuristic, Result, ResultSection
+from assemblyline_v4_service.common.result import (
+    BODY_FORMAT,
+    Heuristic,
+    Result,
+    ResultSection,
+)
 
-from yara_.helper import externals_to_dict, YARA_EXTERNALS, YaraMetadata, YaraValidator
+from yara_.helper import YARA_EXTERNALS, YaraMetadata, YaraValidator, externals_to_dict
 
 
 class Yara(ServiceBase):
@@ -445,7 +450,6 @@ class Yara(ServiceBase):
         request.set_service_context(f"{self.name} version: {self.get_yara_version()}")
 
         self.deep_scan = request.task.deep_scan
-        local_filename = request.file_path
         tags = {f"al_{k.replace('.', '_')}": i for k, i in request.task.tags.items()}
 
         yara_externals = {}
@@ -479,9 +483,9 @@ class Yara(ServiceBase):
                 yara_externals[k] = safe_str(sval)
 
         with self.initialization_lock:
-            kwargs = {"filepath": local_filename} if self.name == "yara" else {"data": ""}
+            data = request.file_contents if self.name == "yara" else ""
             try:
-                matches = self.rules.match(externals=yara_externals, allow_duplicate_metadata=True, **kwargs)
+                matches = self.rules.match(data=data, externals=yara_externals, allow_duplicate_metadata=True)
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
                 # Internal error 30 == exceeded max string matches on rule
@@ -490,7 +494,7 @@ class Yara(ServiceBase):
                 else:
                     try:
                         # Fast mode == Yara skips strings already found
-                        matches = self.rules.match(externals=yara_externals, fast=True, **kwargs)
+                        matches = self.rules.match(data=data, externals=yara_externals, fast=True)
                         result = self._extract_result_from_matches(matches)
                         section = ResultSection("Service Warnings", parent=result)
                         section.add_line(

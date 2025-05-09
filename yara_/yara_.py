@@ -479,8 +479,9 @@ class Yara(ServiceBase):
                 yara_externals[k] = safe_str(sval)
 
         with self.initialization_lock:
+            kwargs = {"filepath": local_filename} if self.name == "yara" else {"data": ""}
             try:
-                matches = self.rules.match(local_filename, externals=yara_externals, allow_duplicate_metadata=True)
+                matches = self.rules.match(externals=yara_externals, allow_duplicate_metadata=True, **kwargs)
                 request.result = self._extract_result_from_matches(matches)
             except Exception as e:
                 # Internal error 30 == exceeded max string matches on rule
@@ -489,7 +490,7 @@ class Yara(ServiceBase):
                 else:
                     try:
                         # Fast mode == Yara skips strings already found
-                        matches = self.rules.match(local_filename, externals=yara_externals, fast=True)
+                        matches = self.rules.match(externals=yara_externals, fast=True, **kwargs)
                         result = self._extract_result_from_matches(matches)
                         section = ResultSection("Service Warnings", parent=result)
                         section.add_line(

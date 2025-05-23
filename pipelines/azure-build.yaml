@@ -1,49 +1,42 @@
 name: build
-
 variables:
-  - group: unittest-samples
-
+- group: unittest-samples
 trigger:
   tags:
-    include: ["v*"]
+    include:
+    - v*
 pr: none
-
 pool:
-  vmImage: "ubuntu-20.04"
-
+  vmImage: ubuntu-latest
 resources:
   repositories:
-    - repository: PipelineTemplates
-      type: github
-      name: CybercentreCanada/assemblyline-pipeline-templates
-      ref: refs/heads/main
-      endpoint: github-repo-sa
-      trigger: none
-    - repository: unittest-samples
-      type: github
-      name: $(unittest_samples_repository)
-      ref: main
-      endpoint: github-repo-sa
-      trigger: none
-
+  - repository: PipelineTemplates
+    type: github
+    name: CybercentreCanada/assemblyline-pipeline-templates
+    ref: refs/heads/main
+    endpoint: github-repo-sa
+    trigger: none
+  - repository: unittest-samples
+    type: github
+    name: $(unittest_samples_repository)
+    ref: main
+    endpoint: github-repo-sa
+    trigger: none
 stages:
-  # Deploy YARA service
-  - template: stages/deploy-service.yaml@PipelineTemplates
-    parameters:
-      is_public: true
-      labels:
-        classification: "UNCLASSIFIED"
-      dockerfile_path: ./yara_/Dockerfile
-      readme_path: ./yara_/README.md
-      service_name: YARA
-
-  # Deploy TagCheck service
-  - template: stages/deploy-service.yaml@PipelineTemplates
-    parameters:
-      is_public: true
-      labels:
-        classification: "UNCLASSIFIED"
-      dockerfile_path: ./tagcheck/Dockerfile
-      readme_path: ./tagcheck/README.md
-      service_name: TagCheck
-      repo_override: assemblyline-service-tagcheck
+- template: stages/deploy-service.yaml@PipelineTemplates
+  parameters:
+    is_public: true
+    labels:
+      classification: UNCLASSIFIED
+    dockerfile_path: ./yara_/Dockerfile
+    readme_path: ./yara_/README.md
+    service_name: YARA
+- template: stages/deploy-service.yaml@PipelineTemplates
+  parameters:
+    is_public: true
+    labels:
+      classification: UNCLASSIFIED
+    dockerfile_path: ./tagcheck/Dockerfile
+    readme_path: ./tagcheck/README.md
+    service_name: TagCheck
+    repo_override: assemblyline-service-tagcheck

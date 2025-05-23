@@ -8,7 +8,7 @@ rejects: empty|metadata/.*
 stage: POST
 category: Static Analysis
 
-file_required: true
+file_required: false
 timeout: 60
 disable_cache: false
 

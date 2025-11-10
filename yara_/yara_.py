@@ -106,7 +106,10 @@ class Yara(ServiceBase):
         # Allow the al_score meta in a YARA rule to override default scoring
         sig = f"{match.namespace}.{match.rule}"
         try:
-            score_map = {sig: int(almeta.al_score)} if almeta.al_score else None
+            if almeta.al_score is None:
+                score_map = None
+            else:
+                score_map = {sig: int(almeta.al_score)}
         except ValueError:
             self.log.error(f"Invalid al_score value on rule '{sig}': {almeta.al_score}. Continuing without override..")
             score_map = None

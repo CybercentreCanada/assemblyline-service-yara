@@ -30,7 +30,7 @@ USER assemblyline
 RUN touch /tmp/before-pip
 # Pending: https://github.com/plyara/plyara/pull/130
 RUN pip install --no-cache-dir --user git+https://github.com/cccs-rs/plyara.git
-RUN pip install --no-cache-dir --user --global-option="build" --global-option="--enable-magic" yara-python==${YARA_VERSION}
+RUN pip install --no-cache-dir --user --config-settings="build=true" --config-settings="--enable-magic=true" yara-python==${YARA_VERSION}
 RUN rm -rf ~/.cache/pip
 
 # Remove files that existed before the pip install so that our copy command below doesn't take a snapshot of

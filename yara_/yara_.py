@@ -123,7 +123,7 @@ class Yara(ServiceBase):
                     heur = Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1), score_map=score_map)
         elif isinstance(almeta.category, str):
             heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category.lower(), 1), score_map=score_map)
-        elif any([term.lower().startswith("susp") for term in almeta.name.split("_") + match.tags]):
+        elif any([term.lower().startswith("susp") or term.lower().startswith("hunting") for term in almeta.name.split("_") + match.tags]):
             # If the rule name indicates suspiciousness about the match, then score accordingly
             heur = Heuristic(17, score_map=score_map)
             

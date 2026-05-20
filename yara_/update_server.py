@@ -109,8 +109,7 @@ class YaraUpdateServer(ServiceUpdater):
         if missing_sources:
             # If sources are missing, then clear caching from Redis and trigger source updates
             for source in missing_sources:
-                self._current_source = source
-                self.set_source_update_time(0)
+                self.set_source_update_time(source, 0)
             self.trigger_update()
 
         return check_passed

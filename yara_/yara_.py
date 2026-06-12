@@ -9,12 +9,7 @@ from assemblyline.common.attack_map import attack_map, software_map
 from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
-from assemblyline_v4_service.common.result import (
-    BODY_FORMAT,
-    Heuristic,
-    Result,
-    ResultSection,
-)
+from assemblyline_v4_service.common.result import BODY_FORMAT, Heuristic, Result, ResultSection
 
 from yara_.helper import YARA_EXTERNALS, YaraMetadata, YaraValidator, externals_to_dict
 
@@ -123,10 +118,15 @@ class Yara(ServiceBase):
                     heur = Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1), score_map=score_map)
         elif isinstance(almeta.category, str):
             heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category.lower(), 1), score_map=score_map)
-        elif any([term.lower().startswith("susp") or term.lower().startswith("hunting") for term in almeta.name.split("_") + match.tags]):
+        elif any(
+            [
+                term.lower().startswith("susp") or term.lower().startswith("hunting")
+                for term in almeta.name.split("_") + match.tags
+            ]
+        ):
             # If the rule name indicates suspiciousness about the match, then score accordingly
             heur = Heuristic(17, score_map=score_map)
-            
+
         # Skeleton of YARA signature ontology
         ont_data = {
             "type": "YARA",
@@ -141,7 +141,7 @@ class Yara(ServiceBase):
                 }
             ],
             "signature_id": sig_meta_key,
-            "classification": signature_meta["classification"]
+            "classification": signature_meta["classification"],
         }
 
         ont_data["attributes"][0]["source"]["ontology_id"] = Signature.get_oid(ont_data)

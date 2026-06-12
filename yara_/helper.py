@@ -266,6 +266,8 @@ class YaraMetadata(object):
 
         self.name = match.rule
         self.id = meta.get("id", meta.get("rule_id", meta.get("signature_id", None)))
+        if self.id is not None:
+            self.id = str(self.id)
         self.category = meta.get("category", meta.get("rule_group", "info"))
         self.malware_type = meta.get("malware_type", None)
         self.version = meta.get("version", meta.get("rule_version", meta.get("revision", 1)))

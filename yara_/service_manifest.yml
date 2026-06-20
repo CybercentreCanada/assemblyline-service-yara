@@ -132,6 +132,9 @@ docker_config:
   cpu_cores: 1.0
   ram_mb: 2048
 
+config:
+  relaxed_re_syntax: true
+
 dependencies:
   updates:
     container:

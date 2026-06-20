@@ -2,7 +2,7 @@ import logging
 import os
 import re
 
-import yara
+import yara_x
 from assemblyline.common import forge
 from assemblyline.odm.models.signature import Signature
 from assemblyline_v4_service.updater.client import UpdaterClient
@@ -153,7 +153,7 @@ class YaraImporter(object):
 
 
 class YaraValidator(object):
-    def __init__(self, externals=None, logger=None):
+    def __init__(self, externals=None, logger=None, relaxed_re_syntax=True):
         if not logger:
             from assemblyline.common import log as al_log
 
@@ -164,6 +164,7 @@ class YaraValidator(object):
             externals = {"dummy": ""}
         self.log = logger
         self.externals = externals
+        self.relaxed_re_syntax = relaxed_re_syntax
         self.rulestart = re.compile(r"^(?:global )?(?:private )?(?:private )?rule ", re.MULTILINE)
         self.rulename = re.compile("rule ([^{^:]+)")
 
@@ -173,7 +174,7 @@ class YaraValidator(object):
         # List will start at 0 not 1
         error_line = eline - 1
 
-        if invalid_rule_name and "duplicated identifier" in message:
+        if invalid_rule_name and "duplicate rule" in message:
             f_lines[error_line] = f_lines[error_line].replace(invalid_rule_name, f"{invalid_rule_name}_1")
             self.log.warning(
                 f"Yara rule '{invalid_rule_name}' was renamed '{invalid_rule_name}_1' because it's "
@@ -192,22 +193,18 @@ class YaraValidator(object):
                 if re.match(self.rulestart, line):
                     invalid_rule_name = re.search(self.rulename, line).group(1).strip()
 
-                    # Second loop to find end of rule
+                    # Second loop to find end of rule: start from the line after the rule declaration
                     end_idx = 0
                     while True:
-                        find_end = error_line + end_idx
+                        find_end = find_start + 1 + end_idx
                         if find_end >= len(f_lines):
-                            raise Exception(
-                                "Yara Validator failed to find invalid rule end. "
-                                f"Yara Error: {message} Line: {eline}"
-                            )
+                            # Rule extends to end of file
+                            f_lines = f_lines[:find_start]
+                            break
                         line = f_lines[find_end]
-                        if re.match(self.rulestart, line) or find_end == len(f_lines) - 1:
-                            # Now we have the start and end, strip from file
-                            if find_end == len(f_lines) - 1:
-                                f_lines = f_lines[:find_start]
-                            else:
-                                f_lines = f_lines[:find_start] + f_lines[find_end:]
+                        if re.match(self.rulestart, line):
+                            # Found start of next rule — everything from find_start to find_end is the invalid rule
+                            f_lines = f_lines[:find_start] + f_lines[find_end:]
                             break
                         end_idx += 1
                     # Send the error output to AL logs
@@ -228,21 +225,35 @@ class YaraValidator(object):
         change = False
         while True:
             try:
-                yara.compile(filepath=rulefile, externals=self.externals).match(data="")
+                with open(rulefile, "r", errors="surrogateescape") as f:
+                    source = f.read()
+                compiler = yara_x.Compiler(relaxed_re_syntax=self.relaxed_re_syntax)
+                for k, v in self.externals.items():
+                    compiler.define_global(k, v)
+                compiler.add_source(source)
+                compiler.build()
                 return change
 
             # If something goes wrong, clean rules until valid file given
-            except yara.SyntaxError as e:
+            except yara_x.CompileError as e:
                 error = str(e)
-                e_line = int(error.split("):", 1)[0].split("(", -1)[1])
-                e_message = error.split("): ", 1)[1]
-                if "identifier" in error:
-                    # Problem with a rule associated to the identifier (unknown, duplicated)
-                    invalid_rule_name = e_message.split('"')[1]
+                # Parse line number from " --> line:N:M"
+                location_match = re.search(r"--> line:(\d+)", error)
+                if not location_match:
+                    raise Exception(f"Yara Validator failed to parse error location. Yara-X Error: {error}")
+                e_line = int(location_match.group(1))
+                # Parse message from the first line: "error[EXXXX]: message"
+                first_line = error.split("\n")[0]
+                e_message = first_line.split("]: ", 1)[1] if "]: " in first_line else first_line
+                # For duplicate rule, extract rule name from backticks
+                if "duplicate rule" in e_message:
+                    name_match = re.search(r"`([^`]+)`", e_message)
+                    invalid_rule_name = name_match.group(1) if name_match else ""
                 else:
                     invalid_rule_name = ""
                 try:
                     invalid_rule_name = self.clean(rulefile, e_line, e_message, invalid_rule_name)
+                    change = True
                     if al_client:
                         # Disable offending rule from Signatures API
                         sig_id = al_client.datastore.signature.search(
@@ -262,12 +273,19 @@ class YaraMetadata(object):
     )
 
     def __init__(self, match):
-        meta = match.meta
-        for k, v in meta.items():
-            if len(v) == 1:
-                meta[k] = v[0]
+        # Build metadata dict from yara-x list of (key, value) tuples, preserving duplicates as lists
+        meta = {}
+        for k, v in match.metadata:
+            if k in meta:
+                existing = meta[k]
+                if isinstance(existing, list):
+                    existing.append(v)
+                else:
+                    meta[k] = [existing, v]
+            else:
+                meta[k] = v
 
-        self.name = match.rule
+        self.name = match.identifier
         self.id = meta.get("id", meta.get("rule_id", meta.get("signature_id", None)))
         if self.id is not None:
             # Ensure signature ID is a string for consistent handling within AL, even if it's provided as an integer in YARA metadata

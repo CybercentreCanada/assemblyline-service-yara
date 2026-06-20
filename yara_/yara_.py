@@ -4,7 +4,7 @@ import threading
 from collections import defaultdict
 from typing import List
 
-import yara
+import yara_x
 from assemblyline.common.attack_map import attack_map, software_map
 from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results import Signature
@@ -68,13 +68,13 @@ class Yara(ServiceBase):
         # Load externals
         self.yara_externals = externals_to_dict(externals)
 
-        # Set configuration flags to 4 times the default
-        yara.set_config(max_strings_per_rule=40000, stack_size=65536)
+        # Read relaxed_re_syntax config (default True for smooth upgrade from yara-python)
+        self.relaxed_re_syntax = self.config.get("relaxed_re_syntax", True)
 
     def start(self):
         self.log.info(f"{self.name} started with service version: {self.get_service_version()}")
 
-    def _add_resultinfo_for_match(self, result: Result, match):
+    def _add_resultinfo_for_match(self, result: Result, match, file_data: bytes = b""):
         """
         Parse from Yara signature match and add information to the overall AL service result. This module determines
         result score and identifies any AL tags that should be added (i.e. IMPLANT_NAME, THREAT_ACTOR, etc.).
@@ -82,6 +82,7 @@ class Yara(ServiceBase):
         Args:
             result: AL ResultSection object.
             match: Yara rules Match object item.
+            file_data: Raw bytes of the scanned file (used to extract string match content).
 
         Returns:
             None.
@@ -101,7 +102,7 @@ class Yara(ServiceBase):
 
         section = ResultSection("", classification=signature_meta["classification"])
         # Allow the al_score meta in a YARA rule to override default scoring
-        sig = f"{match.namespace}.{match.rule}"
+        sig = f"{match.namespace}.{match.identifier}"
         try:
             if almeta.al_score is None:
                 score_map = None
@@ -123,7 +124,7 @@ class Yara(ServiceBase):
         elif any(
             [
                 term.lower().startswith("susp") or term.lower().startswith("hunting")
-                for term in almeta.name.split("_") + match.tags
+                for term in almeta.name.split("_") + list(match.tags)
             ]
         ):
             # If the rule name indicates suspiciousness about the match, then score accordingly
@@ -155,7 +156,7 @@ class Yara(ServiceBase):
         section.add_tag(f"file.rule.{self.name.lower()}", sig)
 
         title_elements = [
-            f"[{match.namespace}] {match.rule}",
+            f"[{match.namespace}] {match.identifier}",
         ]
 
         if almeta.actor_type:
@@ -214,7 +215,7 @@ class Yara(ServiceBase):
         section.title_text = title
 
         json_body = dict(
-            name=match.rule,
+            name=match.identifier,
         )
 
         for item in [
@@ -236,7 +237,7 @@ class Yara(ServiceBase):
             if val:
                 json_body[item] = val
 
-        string_match_data = self._add_string_match_data(match)
+        string_match_data = self._add_string_match_data(match, file_data)
         if string_match_data:
             json_body["string_hits"] = string_match_data
 
@@ -271,37 +272,26 @@ class Yara(ServiceBase):
         result.add_section(section)
         # result.order_results_by_score() TODO: should v4 support this?
 
-    def _add_string_match_data(self, match) -> List[str]:
+    def _add_string_match_data(self, match, file_data: bytes = b"") -> List[str]:
         """
         Parses and adds matching strings from a Yara match object to an AL ResultSection.
 
         Args:
             match: Yara match object.
+            file_data: Raw bytes of the scanned file, used to extract matched string content.
 
         Returns:
             None.
         """
         string_hits = []
-        strings = match.strings
         string_dict = defaultdict(list)
-        try:
-            for offset, identifier, data in strings:
-                string_dict[data].append((offset, identifier))
-        except TypeError:  # Breaking change in https://github.com/VirusTotal/yara-python/releases/tag/v4.3.0
-            strings = match.strings  # List[yara.StringMatch]
 
-            for string_match in strings:  # yara.StringMatch
-                assert isinstance(string_match, yara.StringMatch)
-                identifier = string_match.identifier
-                # is_xor = string_match.is_xor()
-                for smi in string_match.instances:
-                    matched_data = smi.matched_data
-                    # matched_length = smi.matched_length
-                    offset = smi.offset
-                    # if is_xor:
-                    #     xor_key = smi.xor_key
-                    #     matched_data = smi.plaintext()
-                    string_dict[matched_data].append((offset, identifier))
+        for pattern in match.patterns:
+            identifier = pattern.identifier
+            for m in pattern.matches:
+                offset = m.offset
+                matched_data = file_data[offset:offset + m.length] if file_data else b""
+                string_dict[matched_data].append((offset, identifier))
 
         result_dict = {}
         for string_value, string_list in string_dict.items():
@@ -361,19 +351,20 @@ class Yara(ServiceBase):
 
         return string_hits
 
-    def _extract_result_from_matches(self, matches):
+    def _extract_result_from_matches(self, matches, file_data: bytes = b""):
         """
         Iterate through Yara match object and send to parser.
 
         Args:
             matches: Yara rules Match object (list).
+            file_data: Raw bytes of the scanned file.
 
         Returns:
             AL Result object.
         """
         result = Result()
         for match in matches:
-            self._add_resultinfo_for_match(result, match)
+            self._add_resultinfo_for_match(result, match, file_data)
         return result
 
     @staticmethod
@@ -428,19 +419,26 @@ class Yara(ServiceBase):
         """
         try:
             # Validate rules using the validator
-            validator = YaraValidator(externals=self.yara_externals, logger=self.log)
+            validator = YaraValidator(
+                externals=self.yara_externals, logger=self.log, relaxed_re_syntax=self.relaxed_re_syntax
+            )
             [validator.validate_rules(yf) for yf in self.rules_list]
 
-            rules = yara.compile(
-                filepaths={os.path.splitext(os.path.basename(yf))[0]: yf for yf in self.rules_list},
-                externals=self.yara_externals,
-            )
+            compiler = yara_x.Compiler(relaxed_re_syntax=self.relaxed_re_syntax)
+            for k, v in self.yara_externals.items():
+                compiler.define_global(k, v)
+            for yf in self.rules_list:
+                namespace = os.path.splitext(os.path.basename(yf))[0]
+                compiler.new_namespace(namespace)
+                with open(yf, "r", errors="surrogateescape") as f:
+                    compiler.add_source(f.read())
+            rules = compiler.build()
 
             if rules:
                 with self.initialization_lock:
                     self.rules = rules
             else:
-                raise Exception("yara.compile() didn't output any rules. Check if service can reach the updater.")
+                raise Exception("yara_x.Compiler.build() didn't output any rules. Check if service can reach the updater.")
         except Exception as e:
             raise Exception(f"No valid {self.name} rules files found. Reason: {e}")
 
@@ -488,35 +486,30 @@ class Yara(ServiceBase):
                 yara_externals[k] = safe_str(sval)
 
         with self.initialization_lock:
-            kwargs = {"filepath": request.file_path} if self.name == "yara" else {"data": ""}
             try:
-                matches = self.rules.match(externals=yara_externals, allow_duplicate_metadata=True, **kwargs)
-                request.result = self._extract_result_from_matches(matches)
+                with open(request.file_path, "rb") as f:
+                    file_data = f.read()
+
+                scanner = yara_x.Scanner(self.rules)
+                # Set globals: start with defaults then override with request-specific values
+                for k, v in self.yara_externals.items():
+                    scanner.set_global(k, v)
+                for k, v in yara_externals.items():
+                    scanner.set_global(k, v)
+
+                results = scanner.scan(file_data)
+                request.result = self._extract_result_from_matches(results.matching_rules, file_data)
             except Exception as e:
-                # Internal error 30 == exceeded max string matches on rule
-                if "internal error: 30" not in str(e):
-                    raise
-                else:
-                    try:
-                        # Fast mode == Yara skips strings already found
-                        matches = self.rules.match(externals=yara_externals, fast=True, **kwargs)
-                        result = self._extract_result_from_matches(matches)
-                        section = ResultSection("Service Warnings", parent=result)
-                        section.add_line(
-                            "Too many matches detected with current ruleset. "
-                            f"{self.name} forced to scan in fast mode."
-                        )
-                        request.result = result
-                    except Exception:
-                        self.log.warning(f"YARA internal error 30 detected on submission {request.task.sid}")
-                        result = Result()
-                        section = ResultSection(f"{self.name} scan not completed.", parent=result)
-                        section.add_line("File returned too many matches with current rule set and YARA exited.")
-                        request.result = result
+                self.log.warning(f"YARA scan error on submission {request.task.sid}: {e}")
+                result = Result()
+                section = ResultSection(f"{self.name} scan not completed.", parent=result)
+                section.add_line(f"File could not be scanned with current rule set: {e}")
+                request.result = result
         self.sha256 = None
 
     def get_yara_version(self):
-        return yara.YARA_VERSION
+        from importlib.metadata import version as pkg_version
+        return pkg_version("yara-x")
 
     def get_tool_version(self):
         """

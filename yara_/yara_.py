@@ -61,7 +61,6 @@ class Yara(ServiceBase):
         if externals is None:
             externals = YARA_EXTERNALS
 
-        self.initialization_lock = threading.RLock()
         self.deep_scan = None
         self.sha256 = None
 
@@ -419,6 +418,7 @@ class Yara(ServiceBase):
         """
         try:
             # Validate rules using the validator
+            self.rules_list = [yf for yf in self.rules_list if os.path.isfile(yf)]
             validator = YaraValidator(
                 externals=self.yara_externals, logger=self.log, relaxed_re_syntax=self.relaxed_re_syntax
             )
@@ -435,8 +435,7 @@ class Yara(ServiceBase):
             rules = compiler.build()
 
             if rules:
-                with self.initialization_lock:
-                    self.rules = rules
+                self.rules = rules
             else:
                 raise Exception("yara_x.Compiler.build() didn't output any rules. Check if service can reach the updater.")
         except Exception as e:
@@ -485,10 +484,9 @@ class Yara(ServiceBase):
             if sval:
                 yara_externals[k] = safe_str(sval)
 
-        with self.initialization_lock:
-            try:
-                with open(request.file_path, "rb") as f:
-                    file_data = f.read()
+        try:
+            with open(request.file_path, "rb") as f:
+                file_data = f.read()
 
                 scanner = yara_x.Scanner(self.rules)
                 # Set globals: start with defaults then override with request-specific values
@@ -499,12 +497,12 @@ class Yara(ServiceBase):
 
                 results = scanner.scan(file_data)
                 request.result = self._extract_result_from_matches(results.matching_rules, file_data)
-            except Exception as e:
-                self.log.warning(f"YARA scan error on submission {request.task.sid}: {e}")
-                result = Result()
-                section = ResultSection(f"{self.name} scan not completed.", parent=result)
-                section.add_line(f"File could not be scanned with current rule set: {e}")
-                request.result = result
+        except Exception as e:
+            self.log.warning(f"YARA scan error on submission {request.task.sid}: {e}")
+            result = Result()
+            section = ResultSection(f"{self.name} scan not completed.", parent=result)
+            section.add_line(f"File could not be scanned with current rule set: {e}")
+            request.result = result
         self.sha256 = None
 
     def get_yara_version(self):

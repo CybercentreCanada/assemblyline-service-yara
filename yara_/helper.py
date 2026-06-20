@@ -292,7 +292,7 @@ class YaraMetadata(object):
             self.id = str(self.id)
         else:
             # Otherwise assume the rule name is the signature ID
-            self.id = match.rule
+            self.id = match.identifier
         self.category = meta.get("category", meta.get("rule_group", "info"))
         self.malware_type = meta.get("malware_type", None)
         self.version = meta.get("version", meta.get("rule_version", meta.get("revision", 1)))

@@ -24,6 +24,10 @@ uses_tags: true
 uses_metadata: true
 uses_temp_submission_data: true
 
+config:
+  relaxed_re_syntax: true
+
+
 heuristics:
   - heur_id: 1
     name: Info
@@ -132,9 +136,6 @@ docker_config:
   cpu_cores: 1.0
   ram_mb: 2048
 
-config:
-  relaxed_re_syntax: true
-
 dependencies:
   updates:
     container:
@@ -158,14 +159,16 @@ update_config:
     - name: reversinglabs
       uri: https://github.com/reversinglabs/reversinglabs-yara-rules.git
       sync: true
-    - name: valhalla
-      uri: https://valhalla.nextron-systems.com/api/v1/get
-      sync: true
-      data: "apikey=1111111111111111111111111111111111111111111111111111111111111111&format=text"
-      headers:
-        - name: Content-Type
-          value: application/x-www-form-urlencoded
-      fetch_method: "POST"
+    # API key is intended for demo purposes only, please use your own API key if you want to use this source
+    # Ref: https://nextronsystems.github.io/valhallaAPI/
+    # - name: valhalla
+    #   uri: https://valhalla.nextron-systems.com/api/v1/get
+    #   sync: true
+    #   data: "apikey=1111111111111111111111111111111111111111111111111111111111111111&format=text"
+    #   headers:
+    #     - name: Content-Type
+    #       value: application/x-www-form-urlencoded
+    #   fetch_method: "POST"
   update_interval_seconds: 86400 # 24 hours
   wait_for_update: true
   default_pattern: ".*\\.yar(a)?"

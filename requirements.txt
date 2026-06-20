@@ -1,2 +1,5 @@
 assemblyline
 assemblyline-v4-service
+yara-x
+plyara
+git+https://github.com/cccs-rs/plyara.git

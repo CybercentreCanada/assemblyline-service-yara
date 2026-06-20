@@ -47,12 +47,13 @@ class YaraImporter(object):
             version = 1
             status = default_status
 
+            signature_ids = {}
             for meta in signature.get("metadata", {}):
                 for k, v in meta.items():
                     if k in ["classification", "sharing"]:
                         classification = v
                     elif k in ["id", "rule_id", "signature_id"]:
-                        signature_id = v
+                        signature_ids[k] = v
                     elif k in ["version", "rule_version", "revision"]:
                         if isinstance(
                             v,
@@ -79,7 +80,9 @@ class YaraImporter(object):
                 # If there is a null value for a version, then default to original value
                 version = 1
 
-            signature_id = signature_id or signature.get("rule_name")
+            # Set signature_id based on expected precedence: id > rule_id > signature_id
+            signature_id = signature_ids.get("id", signature_ids.get("rule_id", signature_ids.get("signature_id"))) or \
+            signature.get('rule_name')
 
             # Convert CCCS YARA status to AL signature status
             if status == "RELEASED":
@@ -267,7 +270,11 @@ class YaraMetadata(object):
         self.name = match.rule
         self.id = meta.get("id", meta.get("rule_id", meta.get("signature_id", None)))
         if self.id is not None:
+            # Ensure signature ID is a string for consistent handling within AL, even if it's provided as an integer in YARA metadata
             self.id = str(self.id)
+        else:
+            # Otherwise assume the rule name is the signature ID
+            self.id = match.rule
         self.category = meta.get("category", meta.get("rule_group", "info"))
         self.malware_type = meta.get("malware_type", None)
         self.version = meta.get("version", meta.get("rule_version", meta.get("revision", 1)))

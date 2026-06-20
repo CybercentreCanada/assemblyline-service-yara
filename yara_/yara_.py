@@ -9,7 +9,12 @@ from assemblyline.common.attack_map import attack_map, software_map
 from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
-from assemblyline_v4_service.common.result import BODY_FORMAT, Heuristic, Result, ResultSection
+from assemblyline_v4_service.common.result import (
+    BODY_FORMAT,
+    Heuristic,
+    Result,
+    ResultSection,
+)
 
 from yara_.helper import YARA_EXTERNALS, YaraMetadata, YaraValidator, externals_to_dict
 
@@ -90,12 +95,9 @@ class Yara(ServiceBase):
         if almeta.mitre_att:
             attacks = almeta.mitre_att if isinstance(almeta.mitre_att, list) else [almeta.mitre_att]
 
-        sig_meta_key = match.rule
-        if sig_meta_key not in self.signatures_meta:
-            # Key might be based of the ID metadata of the rule
-            sig_meta_key = almeta.id
-
-        signature_meta = self.signatures_meta[sig_meta_key]
+        # The signature metakey should be the derived signature ID of parsing the match
+        sig_meta_key = almeta.id
+        signature_meta = self.signatures_meta[f"{match.namespace}.{sig_meta_key}"]
 
         section = ResultSection("", classification=signature_meta["classification"])
         # Allow the al_score meta in a YARA rule to override default scoring

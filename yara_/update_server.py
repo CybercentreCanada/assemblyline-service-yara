@@ -204,7 +204,6 @@ class YaraUpdateServer(ServiceUpdater):
         # This also avoids the need to have to insert this kind of metadata into the signature itself
 
         # Pull signature metadata from the API
-        signature_map = {}
         signature_map = {
             f"{item['source']}.{item['signature_id']}": item
             for item in self.datastore.signature.stream_search(query=self.signatures_query,

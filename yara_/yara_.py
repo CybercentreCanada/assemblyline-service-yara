@@ -449,7 +449,7 @@ class Yara(ServiceBase):
 
         self.sha256 = request.sha256
 
-        request.set_service_context(f"{self.name} version: {self.get_yara_version()}")
+        request.set_service_context(f"yara-x version: {self.get_yara_version()}")
 
         self.deep_scan = request.task.deep_scan
         tags = {f"al_{k.replace('.', '_')}": i for k, i in request.task.tags.items()}

@@ -1,6 +1,5 @@
 import json
 import os
-import threading
 from collections import defaultdict
 from typing import List
 
@@ -9,6 +8,7 @@ from assemblyline.common.attack_map import attack_map, software_map
 from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
+from assemblyline_v4_service.common.request import ServiceRequest
 from assemblyline_v4_service.common.result import (
     BODY_FORMAT,
     Heuristic,
@@ -61,9 +61,6 @@ class Yara(ServiceBase):
         if externals is None:
             externals = YARA_EXTERNALS
 
-        self.deep_scan = None
-        self.sha256 = None
-
         # Load externals
         self.yara_externals = externals_to_dict(externals)
 
@@ -73,12 +70,13 @@ class Yara(ServiceBase):
     def start(self):
         self.log.info(f"{self.name} started with service version: {self.get_service_version()}")
 
-    def _add_resultinfo_for_match(self, result: Result, match, file_data: bytes = b""):
+    def _add_resultinfo_for_match(self, request: ServiceRequest, result: Result, match, file_data: bytes = b""):
         """
         Parse from Yara signature match and add information to the overall AL service result. This module determines
         result score and identifies any AL tags that should be added (i.e. IMPLANT_NAME, THREAT_ACTOR, etc.).
 
         Args:
+            request: ServiceRequest object.
             result: AL ResultSection object.
             match: Yara rules Match object item.
             file_data: Raw bytes of the scanned file (used to extract string match content).
@@ -135,7 +133,7 @@ class Yara(ServiceBase):
             "name": sig,
             "attributes": [
                 {
-                    "file_hash": self.sha256,
+                    "file_hash": request.sha256,
                     "source": {
                         "tag": sig,
                         "service_name": self.__class__.__name__,
@@ -148,7 +146,7 @@ class Yara(ServiceBase):
 
         ont_data["attributes"][0]["source"]["ontology_id"] = Signature.get_oid(ont_data)
 
-        if self.deep_scan or signature_meta["status"] != "NOISY":
+        if request.deep_scan or signature_meta["status"] != "NOISY":
             heur.add_signature_id(sig)
             [heur.add_attack_id(attack_id=attack_id) for attack_id in attacks]
             section.set_heuristic(heur)
@@ -350,11 +348,12 @@ class Yara(ServiceBase):
 
         return string_hits
 
-    def _extract_result_from_matches(self, matches, file_data: bytes = b""):
+    def _extract_result_from_matches(self, request: ServiceRequest, matches, file_data: bytes = b""):
         """
         Iterate through Yara match object and send to parser.
 
         Args:
+            request: ServiceRequest object.
             matches: Yara rules Match object (list).
             file_data: Raw bytes of the scanned file.
 
@@ -363,7 +362,7 @@ class Yara(ServiceBase):
         """
         result = Result()
         for match in matches:
-            self._add_resultinfo_for_match(result, match, file_data)
+            self._add_resultinfo_for_match(request, result, match, file_data)
         return result
 
     @staticmethod
@@ -447,11 +446,8 @@ class Yara(ServiceBase):
         if not self.rules:
             return
 
-        self.sha256 = request.sha256
-
         request.set_service_context(f"yara-x version: {self.get_yara_version()}")
 
-        self.deep_scan = request.task.deep_scan
         tags = {f"al_{k.replace('.', '_')}": i for k, i in request.task.tags.items()}
 
         yara_externals = {}
@@ -484,26 +480,27 @@ class Yara(ServiceBase):
             if sval:
                 yara_externals[k] = safe_str(sval)
 
-        try:
-            with open(request.file_path, "rb") as f:
-                file_data = f.read()
+            # Assume there is no file data if the file path is not provided or the file does not exist
+            # (ie. for TagCheck)
+            file_data = ""
 
-                scanner = yara_x.Scanner(self.rules)
-                # Set globals: start with defaults then override with request-specific values
-                for k, v in self.yara_externals.items():
-                    scanner.set_global(k, v)
-                for k, v in yara_externals.items():
-                    scanner.set_global(k, v)
+            if self.name == "yara":
+                # Read the file data for the YARA service
+                with open(request.file_path, "rb") as f:
+                    file_data = f.read()
+            else:
+                # For TagCheck, just use an empty string for the file data
+                file_data = ""
 
-                results = scanner.scan(file_data)
-                request.result = self._extract_result_from_matches(results.matching_rules, file_data)
-        except Exception as e:
-            self.log.warning(f"YARA scan error on submission {request.task.sid}: {e}")
-            result = Result()
-            section = ResultSection(f"{self.name} scan not completed.", parent=result)
-            section.add_line(f"File could not be scanned with current rule set: {e}")
-            request.result = result
-        self.sha256 = None
+            scanner = yara_x.Scanner(self.rules)
+            # Set globals: start with defaults then override with request-specific values
+            for k, v in self.yara_externals.items():
+                scanner.set_global(k, v)
+            for k, v in yara_externals.items():
+                scanner.set_global(k, v)
+
+            results = scanner.scan(file_data)
+            request.result = self._extract_result_from_matches(request, results.matching_rules, file_data)
 
     def get_yara_version(self):
         from importlib.metadata import version as pkg_version

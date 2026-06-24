@@ -480,23 +480,23 @@ class Yara(ServiceBase):
             if sval:
                 yara_externals[k] = safe_str(sval)
 
-            # Assume no file data by default for TagCheck compatibility
-            file_data = b""
+        # Assume no file data by default for TagCheck compatibility
+        file_data = b""
 
-            # If the service is YARA, read the file data for scanning
-            if self.name == "yara":
-                with open(request.file_path, "rb") as f:
-                    file_data = f.read()
+        # If the service is YARA, read the file data for scanning
+        if self.name == "yara":
+            with open(request.file_path, "rb") as f:
+                file_data = f.read()
 
-            scanner = yara_x.Scanner(self.rules)
-            # Set globals: start with defaults then override with request-specific values
-            for k, v in self.yara_externals.items():
-                scanner.set_global(k, v)
-            for k, v in yara_externals.items():
-                scanner.set_global(k, v)
+        scanner = yara_x.Scanner(self.rules)
+        # Set globals: start with defaults then override with request-specific values
+        for k, v in self.yara_externals.items():
+            scanner.set_global(k, v)
+        for k, v in yara_externals.items():
+            scanner.set_global(k, v)
 
-            results = scanner.scan(file_data)
-            request.result = self._extract_result_from_matches(request, results.matching_rules, file_data)
+        results = scanner.scan(file_data)
+        request.result = self._extract_result_from_matches(request, results.matching_rules, file_data)
 
     def get_yara_version(self):
         from importlib.metadata import version as pkg_version

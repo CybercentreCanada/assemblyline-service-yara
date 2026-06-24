@@ -480,17 +480,13 @@ class Yara(ServiceBase):
             if sval:
                 yara_externals[k] = safe_str(sval)
 
-            # Assume there is no file data if the file path is not provided or the file does not exist
-            # (ie. for TagCheck)
-            file_data = ""
+            # Assume no file data by default for TagCheck compatibility
+            file_data = b""
 
+            # If the service is YARA, read the file data for scanning
             if self.name == "yara":
-                # Read the file data for the YARA service
                 with open(request.file_path, "rb") as f:
                     file_data = f.read()
-            else:
-                # For TagCheck, just use an empty string for the file data
-                file_data = ""
 
             scanner = yara_x.Scanner(self.rules)
             # Set globals: start with defaults then override with request-specific values

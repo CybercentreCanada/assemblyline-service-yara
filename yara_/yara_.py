@@ -1,7 +1,7 @@
 import json
 import os
 from collections import defaultdict
-from typing import List
+from typing import Dict, List
 
 import yara_x
 from assemblyline.common.attack_map import attack_map, software_map
@@ -234,11 +234,17 @@ class Yara(ServiceBase):
             if val:
                 json_body[item] = val
 
+        section.set_body(json.dumps(json_body), body_format=BODY_FORMAT.KEY_VALUE)
+
         string_match_data = self._add_string_match_data(match, file_data)
         if string_match_data:
-            json_body["string_hits"] = string_match_data
-
-        section.set_body(json.dumps(json_body), body_format=BODY_FORMAT.KEY_VALUE)
+            string_section = ResultSection(
+                "String Matches",
+                classification=signature_meta["classification"],
+                body=json.dumps(string_match_data),
+                body_format=BODY_FORMAT.KEY_VALUE,
+            )
+            section.add_subsection(string_section)
 
         # Update Signature ontology data and append to collection
         ont_attacks = []
@@ -269,84 +275,74 @@ class Yara(ServiceBase):
         result.add_section(section)
         # result.order_results_by_score() TODO: should v4 support this?
 
-    def _add_string_match_data(self, match, file_data: bytes = b"") -> List[str]:
+    def _add_string_match_data(self, match, file_data: bytes = b"") -> Dict[str, str]:
         """
-        Parses and adds matching strings from a Yara match object to an AL ResultSection.
+        Parses matching strings from a Yara match object into a key-value dict.
+
+        Each key is the YARA string identifier (e.g. ``$str1`` or ``$str1 (wide)``),
+        and each value is the matched content together with its file offset(s) and
+        an optional hit-count.  When a single identifier matches multiple distinct
+        byte sequences the entries are indexed (e.g. ``$str1[0]``, ``$str1[1]``).
 
         Args:
             match: Yara match object.
             file_data: Raw bytes of the scanned file, used to extract matched string content.
 
         Returns:
-            None.
+            Ordered dict mapping string identifier keys to formatted match strings.
         """
-        string_hits = []
-        string_dict = defaultdict(list)
+        # Map (identifier, matched_bytes) -> list of file offsets
+        id_data_dict: Dict[tuple, list] = defaultdict(list)
 
         for pattern in match.patterns:
             identifier = pattern.identifier
             for m in pattern.matches:
                 offset = m.offset
-                matched_data = file_data[offset:offset + m.length] if file_data else b""
-                string_dict[matched_data].append((offset, identifier))
+                matched_data = file_data[offset : offset + m.length] if file_data else b""
+                id_data_dict[(identifier, matched_data)].append(offset)
 
-        result_dict = {}
-        for string_value, string_list in string_dict.items():
-            if isinstance(string_value, bytes):
-                string_value = safe_str(string_value)
-            count = len(string_list)
-            string_offset_list = []
-            ident = ""
-            for offset, ident in string_list[:5]:
-                string_offset_list.append(str(hex(offset)).replace("L", ""))
+        # Group formatted entries by their base key (identifier [+ wide flag])
+        id_to_entries: Dict[str, list] = defaultdict(list)
 
-            if ident == "$":
-                string_name = ""
-            else:
-                string_name = f"{ident[1:]} "
+        for (identifier, matched_data), offsets in id_data_dict.items():
+            string_value = safe_str(matched_data) if isinstance(matched_data, bytes) else matched_data
 
-            string_offset = ", ".join(string_offset_list)
-            if len(string_list) > 5:
-                string_offset += "..."
+            count = len(offsets)
+            offset_strs = [hex(o) for o in offsets[:5]]
+            offset_str = ", ".join(offset_strs)
+            if count > 5:
+                offset_str += "..."
 
             is_wide_char = self._is_wide_char(string_value)
             if is_wide_char:
                 string_value = self._get_non_wide_char(string_value)
 
-            string_value = repr(string_value)
-            if len(string_value) > 100:
-                string_value = f"{string_value[:100]}..."
+            string_value_repr = repr(string_value)
+            if len(string_value_repr) > 100:
+                string_value_repr = f"{string_value_repr[:100]}..."
 
-            wide_str = ""
-            if is_wide_char:
-                wide_str = " (wide)"
+            wide_str = " (wide)" if is_wide_char else ""
+            base_key = "(anonymous)" + wide_str if identifier == "$" else identifier + wide_str
 
-            entry_name = "".join((string_name, wide_str))
-            if string_name:
-                result_list = result_dict.get(entry_name, [])
-                result_list.append((string_value, string_offset, count))
-                result_dict[entry_name] = result_list
-                continue
+            entry_value = f"{string_value_repr} @ [{offset_str}]"
+            if count > 1:
+                entry_value += f" ({count}x)"
 
-            string_hit = (
-                f"{entry_name}: '{string_value} [@ {string_offset}]" f"{' (' + str(count) + 'x)' if count > 1 else ''}'"
-            )
-            string_hits.append(string_hit)
+            id_to_entries[base_key].append(entry_value)
 
-        for entry_name, result_list in result_dict.items():
-            for result in result_list[:5]:
-                if isinstance(result[0], bytes):
-                    result[0] = safe_str(result[0])
-                string_hit = (
-                    f"{entry_name}: '{result[0]}' [@ {result[1]}]"
-                    f"{' (' + str(result[2]) + 'x)' if result[2] > 1 else ''}"
-                )
-                string_hits.append(string_hit)
-            more = len(result_list[5:])
-            if more:
-                string_hits.append(f"{entry_name} x{more}")
+        # Flatten to a final {key: value} dict
+        result: Dict[str, str] = {}
+        for key, entries in id_to_entries.items():
+            if len(entries) == 1:
+                result[key] = entries[0]
+            else:
+                for i, entry in enumerate(entries[:5]):
+                    result[f"{key}[{i}]"] = entry
+                remaining = len(entries) - 5
+                if remaining > 0:
+                    result[f"{key}[...]"] = f"({remaining} more)"
 
-        return string_hits
+        return result
 
     def _extract_result_from_matches(self, request: ServiceRequest, matches, file_data: bytes = b""):
         """

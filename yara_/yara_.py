@@ -1,4 +1,3 @@
-import json
 import os
 from collections import defaultdict
 from typing import List
@@ -10,10 +9,9 @@ from assemblyline.odm.models.ontology.results import Signature
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.request import ServiceRequest
 from assemblyline_v4_service.common.result import (
-    BODY_FORMAT,
     Heuristic,
     Result,
-    ResultSection, ResultMultiSection, KVSectionBody, TableSectionBody, TableRow,
+    ResultMultiSection, KVSectionBody, TableSectionBody, TableRow,
 )
 
 from yara_.helper import YARA_EXTERNALS, YaraMetadata, YaraValidator, externals_to_dict

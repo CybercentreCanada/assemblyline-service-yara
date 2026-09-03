@@ -13,7 +13,7 @@ from assemblyline_v4_service.common.result import (
     BODY_FORMAT,
     Heuristic,
     Result,
-    ResultSection,
+    ResultSection, ResultMultiSection, KVSectionBody, TableSectionBody, TableRow,
 )
 
 from yara_.helper import YARA_EXTERNALS, YaraMetadata, YaraValidator, externals_to_dict
@@ -97,7 +97,7 @@ class Yara(ServiceBase):
         sig_meta_key = almeta.id
         signature_meta = self.signatures_meta[f"{match.namespace}.{sig_meta_key}"]
 
-        section = ResultSection("", classification=signature_meta["classification"])
+        section = ResultMultiSection(title_text="", classification=signature_meta["classification"])
         # Allow the al_score meta in a YARA rule to override default scoring
         sig = f"{match.namespace}.{match.identifier}"
         try:
@@ -234,11 +234,15 @@ class Yara(ServiceBase):
             if val:
                 json_body[item] = val
 
+        section.add_section_part(KVSectionBody(**json_body))
+
+        # display string matches as table element if present
         string_match_data = self._add_string_match_data(match, file_data)
         if string_match_data:
-            json_body["string_hits"] = string_match_data
-
-        section.set_body(json.dumps(json_body), body_format=BODY_FORMAT.KEY_VALUE)
+            table_section = TableSectionBody()
+            for i in string_match_data:
+                table_section.add_row(TableRow({"String Matches": i}))
+            section.add_section_part(table_section)
 
         # Update Signature ontology data and append to collection
         ont_attacks = []

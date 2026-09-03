@@ -234,12 +234,12 @@ class Yara(ServiceBase):
 
         section.add_section_part(KVSectionBody(**json_body))
 
-        # display string matches as table element if present
+        # display string hits as table element if present
         string_match_data = self._add_string_match_data(match, file_data)
         if string_match_data:
             table_section = TableSectionBody()
             for i in string_match_data:
-                table_section.add_row(TableRow({"String Matches": i}))
+                table_section.add_row(TableRow({"String Hits": i}))
             section.add_section_part(table_section)
 
         # Update Signature ontology data and append to collection

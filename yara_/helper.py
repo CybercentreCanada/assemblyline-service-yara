@@ -3,22 +3,32 @@ import os
 import re
 
 import yara_x
+import yaraast
 from assemblyline.common import forge
 from assemblyline.odm.models.signature import Signature
 from assemblyline_v4_service.updater.client import UpdaterClient
-from plyara import Plyara, utils
+from yaraast.api import ParsedDocument
+from yaraast.ast.base import YaraFile
+from yaraast.codegen import CodeGenerator
 
 DEFAULT_STATUS = "DEPLOYED"
 Classification = forge.get_classification()
 YARA_EXTERNALS = ["submitter", "mime", "file_type", "tag", "file_name", "file_size"]
+MITRE_ATT_DEFAULTS = {
+    "packer": "T1045",
+    "cryptography": "T1032",
+    "obfuscation": "T1027",
+    "keylogger": "T1056",
+    "shellcode": "T1055",
+}
 
 
 def externals_to_dict(externals: list[str]) -> dict[str, str | int]:
     int_fields = ["file_size"]
-    return {f'al_{x.replace(".", "_")}': "" if x not in int_fields else 0 for x in externals}
+    return {f"al_{x.replace('.', '_')}": "" if x not in int_fields else 0 for x in externals}
 
 
-class YaraImporter(object):
+class YaraImporter:
     def __init__(self, importer_type: str, al_client: UpdaterClient, logger=None):
         if not logger:
             from assemblyline.common import log as al_log
@@ -29,60 +39,66 @@ class YaraImporter(object):
 
         self.importer_type: str = importer_type
         self.update_client: UpdaterClient = al_client
-        self.parser = Plyara()
-        self.parser.STRING_ESCAPE_CHARS.add("r")
         self.classification = forge.get_classification()
         self.log = logger
 
-    def _save_signatures(self, signatures, source, default_status=DEFAULT_STATUS, default_classification=None):
-        if len(signatures) == 0:
+    def _save_signatures(
+        self,
+        document,
+        source,
+        default_status=DEFAULT_STATUS,
+        default_classification=None,
+    ):
+        if len(document.ast.rules) == 0:
             self.log.info(f"There are no signatures for {source}, skipping...")
             return False
 
         order = 1
         upload_list = []
-        for signature in signatures:
+        generator = CodeGenerator()
+        import_document = ParsedDocument(ast=YaraFile(imports=document.ast.imports), dialect="yara")
+        import_source = yaraast.generate(import_document).rstrip()
+        for signature in document.ast.rules:
             classification = default_classification or self.classification.UNRESTRICTED
             signature_id = None
             version = 1
             status = default_status
 
             signature_ids = {}
-            for meta in signature.get("metadata", {}):
-                for k, v in meta.items():
-                    if k in ["classification", "sharing"]:
-                        classification = v
-                    elif k in ["id", "rule_id", "signature_id"]:
-                        signature_ids[k] = v
-                    elif k in ["version", "rule_version", "revision"]:
-                        if isinstance(
-                            v,
-                            (
-                                int,
-                                bool,
-                            ),
-                        ):
-                            # Handle integer or boolean revisions
-                            version = str(v)
-                        elif "." in v:
-                            # Maintain version schema (M.m)
-                            version_split = v.split(".", 1)
-                            major = "".join(filter(str.isdigit, version_split[0]))
-                            minor = "".join(filter(str.isdigit, version_split[1]))
-                            version = f"{major}.{minor}"
-                        else:
-                            # Fair to assume number found is the major only
-                            version = "".join(filter(str.isdigit, v))
-                    elif k in ["status", "al_status"]:
-                        status = v
+            for meta in signature.meta:
+                key, value = meta.key, meta.value
+                if key in ["classification", "sharing"]:
+                    classification = value
+                elif key in ["id", "rule_id", "signature_id"]:
+                    signature_ids[key] = value
+                elif key in ["version", "rule_version", "revision"]:
+                    if isinstance(value, (int, bool)):
+                        # Handle integer or boolean revisions
+                        version = str(value)
+                    elif "." in str(value):
+                        # Maintain version schema (M.m)
+                        version_split = str(value).split(".", 1)
+                        major = "".join(filter(str.isdigit, version_split[0]))
+                        minor = "".join(filter(str.isdigit, version_split[1]))
+                        version = f"{major}.{minor}"
+                    else:
+                        # Fair to assume number found is the major only
+                        version = "".join(filter(str.isdigit, str(value)))
+                elif key in ["status", "al_status"]:
+                    status = value
 
             if not version:
                 # If there is a null value for a version, then default to original value
                 version = 1
 
             # Set signature_id based on expected precedence: id > rule_id > signature_id
-            signature_id = signature_ids.get("id", signature_ids.get("rule_id", signature_ids.get("signature_id"))) or \
-            signature.get('rule_name')
+            signature_id = (
+                signature_ids.get(
+                    "id",
+                    signature_ids.get("rule_id", signature_ids.get("signature_id")),
+                )
+                or signature.name
+            )
 
             # Convert CCCS YARA status to AL signature status
             if status == "RELEASED":
@@ -96,25 +112,24 @@ class YaraImporter(object):
             if status not in ["DEPLOYED", "NOISY", "DISABLED"]:
                 status = default_status
 
-            # Fix imports and remove cuckoo
-            signature["imports"] = utils.detect_imports(signature)
-            if "cuckoo" not in signature["imports"]:
-                sig = Signature(
-                    dict(
-                        classification=classification,
-                        data=utils.rebuild_yara_rule(signature),
-                        name=signature.get("rule_name"),
-                        order=order,
-                        revision=int(float(version)),
-                        signature_id=signature_id,
-                        source=source,
-                        status=status,
-                        type=self.importer_type,
-                    )
-                )
-                upload_list.append(sig.as_primitives())
-            else:
-                self.log.warning(f"Signature '{signature.get('rule_name')}' skipped because it uses cuckoo module.")
+            rule_source = generator.generate(signature)
+            if import_source:
+                rule_source = f"{import_source}\n\n{rule_source}"
+
+            sig = Signature(
+                {
+                    "classification": classification,
+                    "data": rule_source,
+                    "name": signature.name,
+                    "order": order,
+                    "revision": int(float(version)),
+                    "signature_id": signature_id,
+                    "source": source,
+                    "status": status,
+                    "type": self.importer_type,
+                }
+            )
+            upload_list.append(sig.as_primitives())
 
             order += 1
 
@@ -124,11 +139,15 @@ class YaraImporter(object):
         return r["success"]
 
     def _split_signatures(self, data):
-        self.parser = Plyara()
-        self.parser.STRING_ESCAPE_CHARS.add("r")
-        return self.parser.parse_string(data)
+        return yaraast.parse(data, dialect="yara")
 
-    def import_data(self, yara_bin, source, default_status=DEFAULT_STATUS, default_classification=None):
+    def import_data(
+        self,
+        yara_bin,
+        source,
+        default_status=DEFAULT_STATUS,
+        default_classification=None,
+    ):
         return self._save_signatures(
             self._split_signatures(yara_bin),
             source,
@@ -136,7 +155,13 @@ class YaraImporter(object):
             default_classification=default_classification,
         )
 
-    def import_file(self, file_path: str, source: str, default_status=DEFAULT_STATUS, default_classification=None):
+    def import_file(
+        self,
+        file_path: str,
+        source: str,
+        default_status=DEFAULT_STATUS,
+        default_classification=None,
+    ):
         self.log.info(f"Importing file: {file_path}")
         cur_file = os.path.expanduser(file_path)
         if os.path.exists(cur_file):
@@ -149,10 +174,10 @@ class YaraImporter(object):
                     default_classification=default_classification,
                 )
         else:
-            raise Exception(f"File {cur_file} does not exists.")
+            raise FileNotFoundError(f"File {cur_file} does not exists.")
 
 
-class YaraValidator(object):
+class YaraValidator:
     def __init__(self, externals=None, logger=None, relaxed_re_syntax=True):
         if not logger:
             from assemblyline.common import log as al_log
@@ -186,8 +211,8 @@ class YaraValidator(object):
             while True:
                 find_start = error_line - start_idx
                 if find_start == -1:
-                    raise Exception(
-                        "Yara Validator failed to find invalid rule start. " f"Yara Error: {message} Line: {eline}"
+                    raise ValueError(
+                        f"Yara Validator failed to find invalid rule start. Yara Error: {message} Line: {eline}"
                     )
                 line = f_lines[find_start]
                 if re.match(self.rulestart, line):
@@ -240,10 +265,10 @@ class YaraValidator(object):
                 # Parse line number from " --> line:N:M"
                 location_match = re.search(r"--> line:(\d+)", error)
                 if not location_match:
-                    raise Exception(f"Yara Validator failed to parse error location. Yara-X Error: {error}")
+                    raise ValueError(f"Yara Validator failed to parse error location. Yara-X Error: {error}")
                 e_line = int(location_match.group(1))
                 # Parse message from the first line: "error[EXXXX]: message"
-                first_line = error.split("\n")[0]
+                first_line = error.split("\n", maxsplit=1)[0]
                 e_message = first_line.split("]: ", 1)[1] if "]: " in first_line else first_line
                 # For duplicate rule, extract rule name from backticks
                 if "duplicate rule" in e_message:
@@ -251,27 +276,22 @@ class YaraValidator(object):
                     invalid_rule_name = name_match.group(1) if name_match else ""
                 else:
                     invalid_rule_name = ""
-                try:
-                    invalid_rule_name = self.clean(rulefile, e_line, e_message, invalid_rule_name)
-                    change = True
-                    if al_client:
-                        # Disable offending rule from Signatures API
-                        sig_id = al_client.datastore.signature.search(
-                            f"type:yara AND source:{os.path.basename(rulefile)} AND name:{invalid_rule_name}",
-                            rows=1, fl="id", as_obj=False)['items'][0]["id"]
-                        self.log.warning(f"Disabling rule with signature_id {sig_id} because of: {error}")
-                        al_client.signature.change_status(sig_id, "DISABLED")
-                except Exception as ve:
-                    raise ve
 
-                continue
+                invalid_rule_name = self.clean(rulefile, e_line, e_message, invalid_rule_name)
+                change = True
+                if al_client:
+                    # Disable offending rule from Signatures API
+                    sig_id = al_client.datastore.signature.search(
+                        f"type:yara AND source:{os.path.basename(rulefile)} AND name:{invalid_rule_name}",
+                        rows=1,
+                        fl="id",
+                        as_obj=False,
+                    )["items"][0]["id"]
+                    self.log.warning(f"Disabling rule with signature_id {sig_id} because of: {error}")
+                    al_client.signature.change_status(sig_id, "DISABLED")
 
 
-class YaraMetadata(object):
-    MITRE_ATT_DEFAULTS = dict(
-        packer="T1045", cryptography="T1032", obfuscation="T1027", keylogger="T1056", shellcode="T1055"
-    )
-
+class YaraMetadata:
     def __init__(self, match):
         # Build metadata dict from yara-x list of (key, value) tuples, preserving duplicates as lists
         meta = {}
@@ -288,7 +308,7 @@ class YaraMetadata(object):
         self.name = match.identifier
         self.id = meta.get("id", meta.get("rule_id", meta.get("signature_id", None)))
         if self.id is not None:
-            # Ensure signature ID is a string for consistent handling within AL, even if it's provided as an integer in YARA metadata
+            # Ensure signature ID is a string for consistent handling within AL
             self.id = str(self.id)
         else:
             # Otherwise assume the rule name is the signature ID
@@ -305,7 +325,10 @@ class YaraMetadata(object):
         self.al_status = meta.get(self.status, meta.get("al_status", "DEPLOYED"))
         self.actor_type = meta.get("actor_type", meta.get("ta_type", meta.get("family", None)))
         self.mitre_att = meta.get("mitre_att", meta.get("attack_id", None))
-        self.actor = meta.get("used_by", meta.get("actor", meta.get("threat_actor", meta.get("mitre_group", None))))
+        self.actor = meta.get(
+            "used_by",
+            meta.get("actor", meta.get("threat_actor", meta.get("mitre_group", None))),
+        )
         self.exploit = meta.get("exploit", None)
         self.al_tag = meta.get("al_tag", None)
         self.al_score = meta.get("al_score", None)
@@ -313,8 +336,8 @@ class YaraMetadata(object):
         def _set_default_attack_id(key):
             if self.mitre_att:
                 return self.mitre_att
-            if key in self.MITRE_ATT_DEFAULTS:
-                return self.MITRE_ATT_DEFAULTS[key]
+            if key in MITRE_ATT_DEFAULTS:
+                return MITRE_ATT_DEFAULTS[key]
             return None
 
         def _safe_split(comma_sep_list):

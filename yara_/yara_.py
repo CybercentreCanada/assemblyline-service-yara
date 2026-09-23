@@ -1,6 +1,5 @@
 import os
 from collections import defaultdict
-from typing import List
 
 import yara_x
 from assemblyline.common.attack_map import attack_map, software_map
@@ -10,49 +9,53 @@ from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.request import ServiceRequest
 from assemblyline_v4_service.common.result import (
     Heuristic,
+    KVSectionBody,
     Result,
-    ResultMultiSection, KVSectionBody, TableSectionBody, TableRow,
+    ResultMultiSection,
+    TableRow,
+    TableSectionBody,
 )
 
 from yara_.helper import YARA_EXTERNALS, YaraMetadata, YaraValidator, externals_to_dict
 
+TECHNIQUE_DESCRIPTORS = {
+    "shellcode": ("technique.shellcode", "Embedded shellcode"),
+    "packer": ("technique.packer", "Packed PE"),
+    "cryptography": ("technique.crypto", "Uses cryptography/compression"),
+    "obfuscation": ("technique.obfuscation", "Obfuscated"),
+    "keylogger": ("technique.keylogger", "Keylogging capability"),
+    "comms_routine": ("technique.comms_routine", "Does external comms"),
+    "persistance": ("technique.persistence", "Has persistence"),
+}
+
+INFO_DESCRIPTORS = {
+    "compiler": ("file.compiler", "Compiled with known compiler"),
+    "libs": ("file.lib", "Using known library"),
+    "lib": ("file.lib", "Using known library"),
+}
+
+
+YARA_HEURISTICS_MAP = {
+    "info": 1,
+    "technique": 2,
+    "exploit": 3,
+    "tool": 4,
+    "malware": 5,
+    "safe": 6,
+    "tl1": 7,
+    "tl2": 8,
+    "tl3": 9,
+    "tl4": 10,
+    "tl5": 11,
+    "tl6": 12,
+    "tl7": 13,
+    "tl8": 14,
+    "tl9": 15,
+    "tl10": 16,
+}
+
 
 class Yara(ServiceBase):
-    TECHNIQUE_DESCRIPTORS = dict(
-        shellcode=("technique.shellcode", "Embedded shellcode"),
-        packer=("technique.packer", "Packed PE"),
-        cryptography=("technique.crypto", "Uses cryptography/compression"),
-        obfuscation=("technique.obfuscation", "Obfuscated"),
-        keylogger=("technique.keylogger", "Keylogging capability"),
-        comms_routine=("technique.comms_routine", "Does external comms"),
-        persistance=("technique.persistence", "Has persistence"),
-    )
-
-    INFO_DESCRIPTORS = dict(
-        compiler=("file.compiler", "Compiled with known compiler"),
-        libs=("file.lib", "Using known library"),
-        lib=("file.lib", "Using known library"),
-    )
-
-    YARA_HEURISTICS_MAP = dict(
-        info=1,
-        technique=2,
-        exploit=3,
-        tool=4,
-        malware=5,
-        safe=6,
-        tl1=7,
-        tl2=8,
-        tl3=9,
-        tl4=10,
-        tl5=11,
-        tl6=12,
-        tl7=13,
-        tl8=14,
-        tl9=15,
-        tl10=16,
-    )
-
     def __init__(self, config=None, externals=None):
         super().__init__(config)
 
@@ -66,9 +69,13 @@ class Yara(ServiceBase):
         self.relaxed_re_syntax = self.config.get("relaxed_re_syntax", True)
 
     def start(self):
-        self.log.info(f"{self.name} started with service version: {self.get_service_version()}")
+        self.log.info(
+            f"{self.name} started with service version: {self.get_service_version()}"
+        )
 
-    def _add_resultinfo_for_match(self, request: ServiceRequest, result: Result, match, file_data: bytes = b""):
+    def _add_resultinfo_for_match(
+        self, request: ServiceRequest, result: Result, match, file_data: bytes = b""
+    ):
         """
         Parse from Yara signature match and add information to the overall AL service result. This module determines
         result score and identifies any AL tags that should be added (i.e. IMPLANT_NAME, THREAT_ACTOR, etc.).
@@ -89,13 +96,19 @@ class Yara(ServiceBase):
         malware_families = []
 
         if almeta.mitre_att:
-            attacks = almeta.mitre_att if isinstance(almeta.mitre_att, list) else [almeta.mitre_att]
+            attacks = (
+                almeta.mitre_att
+                if isinstance(almeta.mitre_att, list)
+                else [almeta.mitre_att]
+            )
 
         # The signature metakey should be the derived signature ID of parsing the match
         sig_meta_key = almeta.id
         signature_meta = self.signatures_meta[f"{match.namespace}.{sig_meta_key}"]
 
-        section = ResultMultiSection(title_text="", classification=signature_meta["classification"])
+        section = ResultMultiSection(
+            title_text="", classification=signature_meta["classification"]
+        )
         # Allow the al_score meta in a YARA rule to override default scoring
         sig = f"{match.namespace}.{match.identifier}"
         try:
@@ -104,7 +117,9 @@ class Yara(ServiceBase):
             else:
                 score_map = {sig: int(almeta.al_score)}
         except ValueError:
-            self.log.error(f"Invalid al_score value on rule '{sig}': {almeta.al_score}. Continuing without override..")
+            self.log.error(
+                f"Invalid al_score value on rule '{sig}': {almeta.al_score}. Continuing without override.."
+            )
             score_map = None
 
         # If there's multiple categories, assign the highest for scoring
@@ -112,15 +127,17 @@ class Yara(ServiceBase):
         if isinstance(almeta.category, list):
             for category in almeta.category:
                 category = category.lower()
-                if Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1)).score > heur.score:
-                    heur = Heuristic(self.YARA_HEURISTICS_MAP.get(category, 1), score_map=score_map)
+                if Heuristic(YARA_HEURISTICS_MAP.get(category, 1)).score > heur.score:
+                    heur = Heuristic(
+                        YARA_HEURISTICS_MAP.get(category, 1), score_map=score_map
+                    )
         elif isinstance(almeta.category, str):
-            heur = Heuristic(self.YARA_HEURISTICS_MAP.get(almeta.category.lower(), 1), score_map=score_map)
+            heur = Heuristic(
+                YARA_HEURISTICS_MAP.get(almeta.category.lower(), 1), score_map=score_map
+            )
         elif any(
-            [
-                term.lower().startswith("susp") or term.lower().startswith("hunting")
-                for term in almeta.name.split("_") + list(match.tags)
-            ]
+            term.lower().startswith("susp") or term.lower().startswith("hunting")
+            for term in almeta.name.split("_") + list(match.tags)
         ):
             # If the rule name indicates suspiciousness about the match, then score accordingly
             heur = Heuristic(17, score_map=score_map)
@@ -185,14 +202,14 @@ class Yara(ServiceBase):
 
         # Include technique descriptions in the section behavior
         for category, name in almeta.techniques:
-            descriptor = self.TECHNIQUE_DESCRIPTORS.get(category, None)
+            descriptor = TECHNIQUE_DESCRIPTORS.get(category, None)
             if descriptor:
                 technique_type, technique_description = descriptor
                 section.add_tag(technique_type, name)
                 almeta.behavior.add(technique_description)
 
         for category, name in almeta.infos:
-            descriptor = self.INFO_DESCRIPTORS.get(category, None)
+            descriptor = INFO_DESCRIPTORS.get(category, None)
             if descriptor:
                 info_type, info_description = descriptor
                 section.add_tag(info_type, name)
@@ -209,9 +226,7 @@ class Yara(ServiceBase):
         title = " ".join(title_elements)
         section.title_text = title
 
-        json_body = dict(
-            name=match.identifier,
-        )
+        json_body = {"name": match.identifier}
 
         for item in [
             "id",
@@ -249,7 +264,11 @@ class Yara(ServiceBase):
             software = software_map.get(attack_id)
             if attack:
                 ont_attacks.append(
-                    {"attack_id": attack["attack_id"], "pattern": attack["name"], "categories": attack["categories"]}
+                    {
+                        "attack_id": attack["attack_id"],
+                        "pattern": attack["name"],
+                        "categories": attack["categories"],
+                    }
                 )
             elif software:
                 for att_id in software["attack_ids"]:
@@ -265,13 +284,17 @@ class Yara(ServiceBase):
             else:
                 self.log.warning(f"AttackID {attack_id} not known to Assemblyline.")
         ont_data.update(
-            dict(attacks=ont_attacks or None, actors=actors or None, malware_families=malware_families or None)
+            {
+                "attacks": ont_attacks or None,
+                "actors": actors or None,
+                "malware_families": malware_families or None,
+            }
         )
         self.ontology.add_result_part(Signature, ont_data)
         result.add_section(section)
         # result.order_results_by_score() TODO: should v4 support this?
 
-    def _add_string_match_data(self, match, file_data: bytes = b"") -> List[str]:
+    def _add_string_match_data(self, match, file_data: bytes = b"") -> list[str]:
         """
         Parses and adds matching strings from a Yara match object to an AL ResultSection.
 
@@ -289,7 +312,9 @@ class Yara(ServiceBase):
             identifier = pattern.identifier
             for m in pattern.matches:
                 offset = m.offset
-                matched_data = file_data[offset:offset + m.length] if file_data else b""
+                matched_data = (
+                    file_data[offset : offset + m.length] if file_data else b""
+                )
                 string_dict[matched_data].append((offset, identifier))
 
         result_dict = {}
@@ -323,7 +348,7 @@ class Yara(ServiceBase):
             if is_wide_char:
                 wide_str = " (wide)"
 
-            entry_name = "".join((string_name, wide_str))
+            entry_name = string_name + wide_str
             if string_name:
                 result_list = result_dict.get(entry_name, [])
                 result_list.append((string_value, string_offset, count))
@@ -331,7 +356,8 @@ class Yara(ServiceBase):
                 continue
 
             string_hit = (
-                f"{entry_name}: '{string_value} [@ {string_offset}]" f"{' (' + str(count) + 'x)' if count > 1 else ''}'"
+                f"{entry_name}: '{string_value} [@ {string_offset}]"
+                f"{' (' + str(count) + 'x)' if count > 1 else ''}'"
             )
             string_hits.append(string_hit)
 
@@ -350,7 +376,9 @@ class Yara(ServiceBase):
 
         return string_hits
 
-    def _extract_result_from_matches(self, request: ServiceRequest, matches, file_data: bytes = b""):
+    def _extract_result_from_matches(
+        self, request: ServiceRequest, matches, file_data: bytes = b""
+    ):
         """
         Iterate through Yara match object and send to parser.
 
@@ -417,30 +445,31 @@ class Yara(ServiceBase):
         Load Yara rules files. This function will check the updates directory and try to load the latest set of
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
         """
-        try:
-            # Validate rules using the validator
-            self.rules_list = [yf for yf in self.rules_list if os.path.isfile(yf)]
-            validator = YaraValidator(
-                externals=self.yara_externals, logger=self.log, relaxed_re_syntax=self.relaxed_re_syntax
+        # Validate rules using the validator
+        self.rules_list = [yf for yf in self.rules_list if os.path.isfile(yf)]
+        validator = YaraValidator(
+            externals=self.yara_externals,
+            logger=self.log,
+            relaxed_re_syntax=self.relaxed_re_syntax,
+        )
+        [validator.validate_rules(yf) for yf in self.rules_list]
+
+        compiler = yara_x.Compiler(relaxed_re_syntax=self.relaxed_re_syntax)
+        for k, v in self.yara_externals.items():
+            compiler.define_global(k, v)
+        for yf in self.rules_list:
+            namespace = os.path.splitext(os.path.basename(yf))[0]
+            compiler.new_namespace(namespace)
+            with open(yf, "r", errors="surrogateescape") as f:
+                compiler.add_source(f.read())
+        rules = compiler.build()
+
+        if rules:
+            self.rules = rules
+        else:
+            raise RuntimeError(
+                "yara_x.Compiler.build() didn't output any rules. Check if service can reach the updater."
             )
-            [validator.validate_rules(yf) for yf in self.rules_list]
-
-            compiler = yara_x.Compiler(relaxed_re_syntax=self.relaxed_re_syntax)
-            for k, v in self.yara_externals.items():
-                compiler.define_global(k, v)
-            for yf in self.rules_list:
-                namespace = os.path.splitext(os.path.basename(yf))[0]
-                compiler.new_namespace(namespace)
-                with open(yf, "r", errors="surrogateescape") as f:
-                    compiler.add_source(f.read())
-            rules = compiler.build()
-
-            if rules:
-                self.rules = rules
-            else:
-                raise Exception("yara_x.Compiler.build() didn't output any rules. Check if service can reach the updater.")
-        except Exception as e:
-            raise Exception(f"No valid {self.name} rules files found. Reason: {e}")
 
     # noinspection PyBroadException
     def execute(self, request):
@@ -453,7 +482,7 @@ class Yara(ServiceBase):
         tags = {f"al_{k.replace('.', '_')}": i for k, i in request.task.tags.items()}
 
         yara_externals = {}
-        for k in self.yara_externals.keys():
+        for k in self.yara_externals:
             # Externals are always prepended with al_
             clean_key = k[3:]
 
@@ -498,10 +527,13 @@ class Yara(ServiceBase):
             scanner.set_global(k, v)
 
         results = scanner.scan(file_data)
-        request.result = self._extract_result_from_matches(request, results.matching_rules, file_data)
+        request.result = self._extract_result_from_matches(
+            request, results.matching_rules, file_data
+        )
 
     def get_yara_version(self):
         from importlib.metadata import version as pkg_version
+
         return pkg_version("yara-x")
 
     def get_tool_version(self):

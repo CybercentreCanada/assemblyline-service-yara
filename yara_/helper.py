@@ -14,11 +14,20 @@ from yaraast.codegen import CodeGenerator
 DEFAULT_STATUS = "DEPLOYED"
 Classification = forge.get_classification()
 YARA_EXTERNALS = ["submitter", "mime", "file_type", "tag", "file_name", "file_size"]
+MITRE_ATT_DEFAULTS = {
+    "packer": "T1045",
+    "cryptography": "T1032",
+    "obfuscation": "T1027",
+    "keylogger": "T1056",
+    "shellcode": "T1055",
+}
 
 
 def externals_to_dict(externals: list[str]) -> dict[str, str | int]:
     int_fields = ["file_size"]
-    return {f'al_{x.replace(".", "_")}': "" if x not in int_fields else 0 for x in externals}
+    return {
+        f"al_{x.replace('.', '_')}": "" if x not in int_fields else 0 for x in externals
+    }
 
 
 class YaraImporter:
@@ -35,7 +44,13 @@ class YaraImporter:
         self.classification = forge.get_classification()
         self.log = logger
 
-    def _save_signatures(self, document, source, default_status=DEFAULT_STATUS, default_classification=None):
+    def _save_signatures(
+        self,
+        document,
+        source,
+        default_status=DEFAULT_STATUS,
+        default_classification=None,
+    ):
         if len(document.ast.rules) == 0:
             self.log.info(f"There are no signatures for {source}, skipping...")
             return False
@@ -43,7 +58,9 @@ class YaraImporter:
         order = 1
         upload_list = []
         generator = CodeGenerator()
-        import_document = ParsedDocument(ast=YaraFile(imports=document.ast.imports), dialect="yara")
+        import_document = ParsedDocument(
+            ast=YaraFile(imports=document.ast.imports), dialect="yara"
+        )
         import_source = yaraast.generate(import_document).rstrip()
         for signature in document.ast.rules:
             classification = default_classification or self.classification.UNRESTRICTED
@@ -79,8 +96,13 @@ class YaraImporter:
                 version = 1
 
             # Set signature_id based on expected precedence: id > rule_id > signature_id
-            signature_id = signature_ids.get("id", signature_ids.get("rule_id", signature_ids.get("signature_id"))) or \
-            signature.name
+            signature_id = (
+                signature_ids.get(
+                    "id",
+                    signature_ids.get("rule_id", signature_ids.get("signature_id")),
+                )
+                or signature.name
+            )
 
             # Convert CCCS YARA status to AL signature status
             if status == "RELEASED":
@@ -99,31 +121,41 @@ class YaraImporter:
                 rule_source = f"{import_source}\n\n{rule_source}"
 
             sig = Signature(
-                dict(
-                    classification=classification,
-                    data=rule_source,
-                    name=signature.name,
-                    order=order,
-                    revision=int(float(version)),
-                    signature_id=signature_id,
-                    source=source,
-                    status=status,
-                    type=self.importer_type,
-                )
+                {
+                    "classification": classification,
+                    "data": rule_source,
+                    "name": signature.name,
+                    "order": order,
+                    "revision": int(float(version)),
+                    "signature_id": signature_id,
+                    "source": source,
+                    "status": status,
+                    "type": self.importer_type,
+                }
             )
             upload_list.append(sig.as_primitives())
 
             order += 1
 
-        r = self.update_client.signature.add_update_many(source, self.importer_type, upload_list)
-        self.log.info(f"Imported {r['success']}/{order - 1} signatures from {source} into Assemblyline")
+        r = self.update_client.signature.add_update_many(
+            source, self.importer_type, upload_list
+        )
+        self.log.info(
+            f"Imported {r['success']}/{order - 1} signatures from {source} into Assemblyline"
+        )
 
         return r["success"]
 
     def _split_signatures(self, data):
         return yaraast.parse(data, dialect="yara")
 
-    def import_data(self, yara_bin, source, default_status=DEFAULT_STATUS, default_classification=None):
+    def import_data(
+        self,
+        yara_bin,
+        source,
+        default_status=DEFAULT_STATUS,
+        default_classification=None,
+    ):
         return self._save_signatures(
             self._split_signatures(yara_bin),
             source,
@@ -131,7 +163,13 @@ class YaraImporter:
             default_classification=default_classification,
         )
 
-    def import_file(self, file_path: str, source: str, default_status=DEFAULT_STATUS, default_classification=None):
+    def import_file(
+        self,
+        file_path: str,
+        source: str,
+        default_status=DEFAULT_STATUS,
+        default_classification=None,
+    ):
         self.log.info(f"Importing file: {file_path}")
         cur_file = os.path.expanduser(file_path)
         if os.path.exists(cur_file):
@@ -144,10 +182,10 @@ class YaraImporter:
                     default_classification=default_classification,
                 )
         else:
-            raise Exception(f"File {cur_file} does not exists.")
+            raise FileNotFoundError(f"File {cur_file} does not exists.")
 
 
-class YaraValidator(object):
+class YaraValidator:
     def __init__(self, externals=None, logger=None, relaxed_re_syntax=True):
         if not logger:
             from assemblyline.common import log as al_log
@@ -160,7 +198,9 @@ class YaraValidator(object):
         self.log = logger
         self.externals = externals
         self.relaxed_re_syntax = relaxed_re_syntax
-        self.rulestart = re.compile(r"^(?:global )?(?:private )?(?:private )?rule ", re.MULTILINE)
+        self.rulestart = re.compile(
+            r"^(?:global )?(?:private )?(?:private )?rule ", re.MULTILINE
+        )
         self.rulename = re.compile("rule ([^{^:]+)")
 
     def clean(self, rulefile, eline, message, invalid_rule_name):
@@ -170,7 +210,9 @@ class YaraValidator(object):
         error_line = eline - 1
 
         if invalid_rule_name and "duplicate rule" in message:
-            f_lines[error_line] = f_lines[error_line].replace(invalid_rule_name, f"{invalid_rule_name}_1")
+            f_lines[error_line] = f_lines[error_line].replace(
+                invalid_rule_name, f"{invalid_rule_name}_1"
+            )
             self.log.warning(
                 f"Yara rule '{invalid_rule_name}' was renamed '{invalid_rule_name}_1' because it's "
                 f"rule name was used more then once."
@@ -181,8 +223,9 @@ class YaraValidator(object):
             while True:
                 find_start = error_line - start_idx
                 if find_start == -1:
-                    raise Exception(
-                        "Yara Validator failed to find invalid rule start. " f"Yara Error: {message} Line: {eline}"
+                    raise ValueError(
+                        "Yara Validator failed to find invalid rule start. "
+                        f"Yara Error: {message} Line: {eline}"
                     )
                 line = f_lines[find_start]
                 if re.match(self.rulestart, line):
@@ -235,38 +278,41 @@ class YaraValidator(object):
                 # Parse line number from " --> line:N:M"
                 location_match = re.search(r"--> line:(\d+)", error)
                 if not location_match:
-                    raise Exception(f"Yara Validator failed to parse error location. Yara-X Error: {error}")
+                    raise ValueError(
+                        f"Yara Validator failed to parse error location. Yara-X Error: {error}"
+                    )
                 e_line = int(location_match.group(1))
                 # Parse message from the first line: "error[EXXXX]: message"
                 first_line = error.split("\n")[0]
-                e_message = first_line.split("]: ", 1)[1] if "]: " in first_line else first_line
+                e_message = (
+                    first_line.split("]: ", 1)[1] if "]: " in first_line else first_line
+                )
                 # For duplicate rule, extract rule name from backticks
                 if "duplicate rule" in e_message:
                     name_match = re.search(r"`([^`]+)`", e_message)
                     invalid_rule_name = name_match.group(1) if name_match else ""
                 else:
                     invalid_rule_name = ""
-                try:
-                    invalid_rule_name = self.clean(rulefile, e_line, e_message, invalid_rule_name)
-                    change = True
-                    if al_client:
-                        # Disable offending rule from Signatures API
-                        sig_id = al_client.datastore.signature.search(
-                            f"type:yara AND source:{os.path.basename(rulefile)} AND name:{invalid_rule_name}",
-                            rows=1, fl="id", as_obj=False)['items'][0]["id"]
-                        self.log.warning(f"Disabling rule with signature_id {sig_id} because of: {error}")
-                        al_client.signature.change_status(sig_id, "DISABLED")
-                except Exception as ve:
-                    raise ve
 
-                continue
+                invalid_rule_name = self.clean(
+                    rulefile, e_line, e_message, invalid_rule_name
+                )
+                change = True
+                if al_client:
+                    # Disable offending rule from Signatures API
+                    sig_id = al_client.datastore.signature.search(
+                        f"type:yara AND source:{os.path.basename(rulefile)} AND name:{invalid_rule_name}",
+                        rows=1,
+                        fl="id",
+                        as_obj=False,
+                    )["items"][0]["id"]
+                    self.log.warning(
+                        f"Disabling rule with signature_id {sig_id} because of: {error}"
+                    )
+                    al_client.signature.change_status(sig_id, "DISABLED")
 
 
-class YaraMetadata(object):
-    MITRE_ATT_DEFAULTS = dict(
-        packer="T1045", cryptography="T1032", obfuscation="T1027", keylogger="T1056", shellcode="T1055"
-    )
-
+class YaraMetadata:
     def __init__(self, match):
         # Build metadata dict from yara-x list of (key, value) tuples, preserving duplicates as lists
         meta = {}
@@ -290,17 +336,26 @@ class YaraMetadata(object):
             self.id = match.identifier
         self.category = meta.get("category", meta.get("rule_group", "info"))
         self.malware_type = meta.get("malware_type", None)
-        self.version = meta.get("version", meta.get("rule_version", meta.get("revision", 1)))
+        self.version = meta.get(
+            "version", meta.get("rule_version", meta.get("revision", 1))
+        )
         self.description = meta.get("description", None)
-        self.classification = meta.get("classification", meta.get("sharing", Classification.UNRESTRICTED))
+        self.classification = meta.get(
+            "classification", meta.get("sharing", Classification.UNRESTRICTED)
+        )
         self.source = meta.get("source", meta.get("organisation", None))
         self.summary = meta.get("summary", meta.get("behavior", None))
         self.author = meta.get("author", meta.get("poc", None))
         self.status = meta.get("status", None)  # Status assigned by the rule creator
         self.al_status = meta.get(self.status, meta.get("al_status", "DEPLOYED"))
-        self.actor_type = meta.get("actor_type", meta.get("ta_type", meta.get("family", None)))
+        self.actor_type = meta.get(
+            "actor_type", meta.get("ta_type", meta.get("family", None))
+        )
         self.mitre_att = meta.get("mitre_att", meta.get("attack_id", None))
-        self.actor = meta.get("used_by", meta.get("actor", meta.get("threat_actor", meta.get("mitre_group", None))))
+        self.actor = meta.get(
+            "used_by",
+            meta.get("actor", meta.get("threat_actor", meta.get("mitre_group", None))),
+        )
         self.exploit = meta.get("exploit", None)
         self.al_tag = meta.get("al_tag", None)
         self.al_score = meta.get("al_score", None)
@@ -308,8 +363,8 @@ class YaraMetadata(object):
         def _set_default_attack_id(key):
             if self.mitre_att:
                 return self.mitre_att
-            if key in self.MITRE_ATT_DEFAULTS:
-                return self.MITRE_ATT_DEFAULTS[key]
+            if key in MITRE_ATT_DEFAULTS:
+                return MITRE_ATT_DEFAULTS[key]
             return None
 
         def _safe_split(comma_sep_list):
@@ -344,7 +399,9 @@ class YaraMetadata(object):
         # Parse and populate tag list
         self.tags = []
         if self.al_tag:
-            tags = self.al_tag.split(",") if isinstance(self.al_tag, str) else self.al_tag
+            tags = (
+                self.al_tag.split(",") if isinstance(self.al_tag, str) else self.al_tag
+            )
             for tag in tags:
                 tokens = tag.split(":", 1)
                 if len(tokens) == 2:
@@ -353,12 +410,18 @@ class YaraMetadata(object):
         # Parse and populate malware list
         self.malwares = []
         if self.malware:
-            malwares = self.malware.split(",") if isinstance(self.malware, str) else self.malware
+            malwares = (
+                self.malware.split(",")
+                if isinstance(self.malware, str)
+                else self.malware
+            )
             for malware in malwares:
                 tokens = malware.split(":")
                 malware_name = tokens[0]
                 malware_family = tokens[1] if (len(tokens) == 2) else ""
-                self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
+                self.malwares.append(
+                    (malware_name.strip().upper(), malware_family.strip().upper())
+                )
 
         # Parse and populate technique info
         self.techniques = []

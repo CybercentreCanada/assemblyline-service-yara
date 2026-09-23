@@ -69,25 +69,19 @@ class Yara(ServiceBase):
         self.relaxed_re_syntax = self.config.get("relaxed_re_syntax", True)
 
     def start(self):
-        self.log.info(
-            f"{self.name} started with service version: {self.get_service_version()}"
-        )
+        self.log.info(f"{self.name} started with service version: {self.get_service_version()}")
 
-    def _add_resultinfo_for_match(
-        self, request: ServiceRequest, result: Result, match, file_data: bytes = b""
-    ):
-        """
-        Parse from Yara signature match and add information to the overall AL service result. This module determines
-        result score and identifies any AL tags that should be added (i.e. IMPLANT_NAME, THREAT_ACTOR, etc.).
+    def _add_resultinfo_for_match(self, request: ServiceRequest, result: Result, match, file_data: bytes = b""):
+        """Parse from Yara signature match and add information to the overall AL service result.
+
+        This module determines result score and identifies any AL tags that should be added
+        (i.e. IMPLANT_NAME, THREAT_ACTOR, etc.).
 
         Args:
             request: ServiceRequest object.
             result: AL ResultSection object.
             match: Yara rules Match object item.
             file_data: Raw bytes of the scanned file (used to extract string match content).
-
-        Returns:
-            None.
         """
         almeta = YaraMetadata(match)
         self._normalize_metadata(almeta)
@@ -96,19 +90,13 @@ class Yara(ServiceBase):
         malware_families = []
 
         if almeta.mitre_att:
-            attacks = (
-                almeta.mitre_att
-                if isinstance(almeta.mitre_att, list)
-                else [almeta.mitre_att]
-            )
+            attacks = almeta.mitre_att if isinstance(almeta.mitre_att, list) else [almeta.mitre_att]
 
         # The signature metakey should be the derived signature ID of parsing the match
         sig_meta_key = almeta.id
         signature_meta = self.signatures_meta[f"{match.namespace}.{sig_meta_key}"]
 
-        section = ResultMultiSection(
-            title_text="", classification=signature_meta["classification"]
-        )
+        section = ResultMultiSection(title_text="", classification=signature_meta["classification"])
         # Allow the al_score meta in a YARA rule to override default scoring
         sig = f"{match.namespace}.{match.identifier}"
         try:
@@ -117,9 +105,7 @@ class Yara(ServiceBase):
             else:
                 score_map = {sig: int(almeta.al_score)}
         except ValueError:
-            self.log.error(
-                f"Invalid al_score value on rule '{sig}': {almeta.al_score}. Continuing without override.."
-            )
+            self.log.error(f"Invalid al_score value on rule '{sig}': {almeta.al_score}. Continuing without override..")
             score_map = None
 
         # If there's multiple categories, assign the highest for scoring
@@ -128,13 +114,9 @@ class Yara(ServiceBase):
             for category in almeta.category:
                 category = category.lower()
                 if Heuristic(YARA_HEURISTICS_MAP.get(category, 1)).score > heur.score:
-                    heur = Heuristic(
-                        YARA_HEURISTICS_MAP.get(category, 1), score_map=score_map
-                    )
+                    heur = Heuristic(YARA_HEURISTICS_MAP.get(category, 1), score_map=score_map)
         elif isinstance(almeta.category, str):
-            heur = Heuristic(
-                YARA_HEURISTICS_MAP.get(almeta.category.lower(), 1), score_map=score_map
-            )
+            heur = Heuristic(YARA_HEURISTICS_MAP.get(almeta.category.lower(), 1), score_map=score_map)
         elif any(
             term.lower().startswith("susp") or term.lower().startswith("hunting")
             for term in almeta.name.split("_") + list(match.tags)
@@ -295,8 +277,7 @@ class Yara(ServiceBase):
         # result.order_results_by_score() TODO: should v4 support this?
 
     def _add_string_match_data(self, match, file_data: bytes = b"") -> list[str]:
-        """
-        Parses and adds matching strings from a Yara match object to an AL ResultSection.
+        """Parses and adds matching strings from a Yara match object to an AL ResultSection.
 
         Args:
             match: Yara match object.
@@ -312,9 +293,7 @@ class Yara(ServiceBase):
             identifier = pattern.identifier
             for m in pattern.matches:
                 offset = m.offset
-                matched_data = (
-                    file_data[offset : offset + m.length] if file_data else b""
-                )
+                matched_data = file_data[offset : offset + m.length] if file_data else b""
                 string_dict[matched_data].append((offset, identifier))
 
         result_dict = {}
@@ -356,8 +335,7 @@ class Yara(ServiceBase):
                 continue
 
             string_hit = (
-                f"{entry_name}: '{string_value} [@ {string_offset}]"
-                f"{' (' + str(count) + 'x)' if count > 1 else ''}'"
+                f"{entry_name}: '{string_value} [@ {string_offset}]{' (' + str(count) + 'x)' if count > 1 else ''}'"
             )
             string_hits.append(string_hit)
 
@@ -376,11 +354,8 @@ class Yara(ServiceBase):
 
         return string_hits
 
-    def _extract_result_from_matches(
-        self, request: ServiceRequest, matches, file_data: bytes = b""
-    ):
-        """
-        Iterate through Yara match object and send to parser.
+    def _extract_result_from_matches(self, request: ServiceRequest, matches, file_data: bytes = b""):
+        """Iterate through Yara match object and send to parser.
 
         Args:
             request: ServiceRequest object.
@@ -397,8 +372,7 @@ class Yara(ServiceBase):
 
     @staticmethod
     def _get_non_wide_char(string: str) -> str:
-        """
-        Convert wide string to regular string.
+        """Convert wide string to regular string.
 
         Args:
             string: Wide-character string to convert.
@@ -415,8 +389,7 @@ class Yara(ServiceBase):
 
     @staticmethod
     def _is_wide_char(string):
-        """
-        Determine if string is a wide-character string.
+        """Determine if string is a wide-character string.
 
         Args:
             string: Potential wide-character string.
@@ -441,9 +414,13 @@ class Yara(ServiceBase):
         almeta.classification = almeta.classification.upper()
 
     def _load_rules(self) -> None:
-        """
-        Load Yara rules files. This function will check the updates directory and try to load the latest set of
+        """Load Yara rules files.
+
+        This function will check the updates directory and try to load the latest set of
         Yara rules files. If not successful, it will try older versions of the Yara rules files.
+
+        Raises:
+            RuntimeError: If no valid Yara rules could be loaded.
         """
         # Validate rules using the validator
         self.rules_list = [yf for yf in self.rules_list if os.path.isfile(yf)]
@@ -527,9 +504,7 @@ class Yara(ServiceBase):
             scanner.set_global(k, v)
 
         results = scanner.scan(file_data)
-        request.result = self._extract_result_from_matches(
-            request, results.matching_rules, file_data
-        )
+        request.result = self._extract_result_from_matches(request, results.matching_rules, file_data)
 
     def get_yara_version(self):
         from importlib.metadata import version as pkg_version
@@ -537,8 +512,9 @@ class Yara(ServiceBase):
         return pkg_version("yara-x")
 
     def get_tool_version(self):
-        """
-        Return the version of yara used for processing
-        :return:
+        """Return the version of yara used for processing.
+
+        Returns:
+            str: The version of yara-x along with the rules hash.
         """
         return f"{self.get_yara_version()}.r{self.rules_hash}"

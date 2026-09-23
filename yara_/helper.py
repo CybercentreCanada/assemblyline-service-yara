@@ -25,9 +25,7 @@ MITRE_ATT_DEFAULTS = {
 
 def externals_to_dict(externals: list[str]) -> dict[str, str | int]:
     int_fields = ["file_size"]
-    return {
-        f"al_{x.replace('.', '_')}": "" if x not in int_fields else 0 for x in externals
-    }
+    return {f"al_{x.replace('.', '_')}": "" if x not in int_fields else 0 for x in externals}
 
 
 class YaraImporter:
@@ -58,9 +56,7 @@ class YaraImporter:
         order = 1
         upload_list = []
         generator = CodeGenerator()
-        import_document = ParsedDocument(
-            ast=YaraFile(imports=document.ast.imports), dialect="yara"
-        )
+        import_document = ParsedDocument(ast=YaraFile(imports=document.ast.imports), dialect="yara")
         import_source = yaraast.generate(import_document).rstrip()
         for signature in document.ast.rules:
             classification = default_classification or self.classification.UNRESTRICTED
@@ -137,12 +133,8 @@ class YaraImporter:
 
             order += 1
 
-        r = self.update_client.signature.add_update_many(
-            source, self.importer_type, upload_list
-        )
-        self.log.info(
-            f"Imported {r['success']}/{order - 1} signatures from {source} into Assemblyline"
-        )
+        r = self.update_client.signature.add_update_many(source, self.importer_type, upload_list)
+        self.log.info(f"Imported {r['success']}/{order - 1} signatures from {source} into Assemblyline")
 
         return r["success"]
 
@@ -198,9 +190,7 @@ class YaraValidator:
         self.log = logger
         self.externals = externals
         self.relaxed_re_syntax = relaxed_re_syntax
-        self.rulestart = re.compile(
-            r"^(?:global )?(?:private )?(?:private )?rule ", re.MULTILINE
-        )
+        self.rulestart = re.compile(r"^(?:global )?(?:private )?(?:private )?rule ", re.MULTILINE)
         self.rulename = re.compile("rule ([^{^:]+)")
 
     def clean(self, rulefile, eline, message, invalid_rule_name):
@@ -210,9 +200,7 @@ class YaraValidator:
         error_line = eline - 1
 
         if invalid_rule_name and "duplicate rule" in message:
-            f_lines[error_line] = f_lines[error_line].replace(
-                invalid_rule_name, f"{invalid_rule_name}_1"
-            )
+            f_lines[error_line] = f_lines[error_line].replace(invalid_rule_name, f"{invalid_rule_name}_1")
             self.log.warning(
                 f"Yara rule '{invalid_rule_name}' was renamed '{invalid_rule_name}_1' because it's "
                 f"rule name was used more then once."
@@ -224,8 +212,7 @@ class YaraValidator:
                 find_start = error_line - start_idx
                 if find_start == -1:
                     raise ValueError(
-                        "Yara Validator failed to find invalid rule start. "
-                        f"Yara Error: {message} Line: {eline}"
+                        f"Yara Validator failed to find invalid rule start. Yara Error: {message} Line: {eline}"
                     )
                 line = f_lines[find_start]
                 if re.match(self.rulestart, line):
@@ -278,15 +265,11 @@ class YaraValidator:
                 # Parse line number from " --> line:N:M"
                 location_match = re.search(r"--> line:(\d+)", error)
                 if not location_match:
-                    raise ValueError(
-                        f"Yara Validator failed to parse error location. Yara-X Error: {error}"
-                    )
+                    raise ValueError(f"Yara Validator failed to parse error location. Yara-X Error: {error}")
                 e_line = int(location_match.group(1))
                 # Parse message from the first line: "error[EXXXX]: message"
-                first_line = error.split("\n")[0]
-                e_message = (
-                    first_line.split("]: ", 1)[1] if "]: " in first_line else first_line
-                )
+                first_line = error.split("\n", maxsplit=1)[0]
+                e_message = first_line.split("]: ", 1)[1] if "]: " in first_line else first_line
                 # For duplicate rule, extract rule name from backticks
                 if "duplicate rule" in e_message:
                     name_match = re.search(r"`([^`]+)`", e_message)
@@ -294,9 +277,7 @@ class YaraValidator:
                 else:
                     invalid_rule_name = ""
 
-                invalid_rule_name = self.clean(
-                    rulefile, e_line, e_message, invalid_rule_name
-                )
+                invalid_rule_name = self.clean(rulefile, e_line, e_message, invalid_rule_name)
                 change = True
                 if al_client:
                     # Disable offending rule from Signatures API
@@ -306,9 +287,7 @@ class YaraValidator:
                         fl="id",
                         as_obj=False,
                     )["items"][0]["id"]
-                    self.log.warning(
-                        f"Disabling rule with signature_id {sig_id} because of: {error}"
-                    )
+                    self.log.warning(f"Disabling rule with signature_id {sig_id} because of: {error}")
                     al_client.signature.change_status(sig_id, "DISABLED")
 
 
@@ -329,28 +308,22 @@ class YaraMetadata:
         self.name = match.identifier
         self.id = meta.get("id", meta.get("rule_id", meta.get("signature_id", None)))
         if self.id is not None:
-            # Ensure signature ID is a string for consistent handling within AL, even if it's provided as an integer in YARA metadata
+            # Ensure signature ID is a string for consistent handling within AL
             self.id = str(self.id)
         else:
             # Otherwise assume the rule name is the signature ID
             self.id = match.identifier
         self.category = meta.get("category", meta.get("rule_group", "info"))
         self.malware_type = meta.get("malware_type", None)
-        self.version = meta.get(
-            "version", meta.get("rule_version", meta.get("revision", 1))
-        )
+        self.version = meta.get("version", meta.get("rule_version", meta.get("revision", 1)))
         self.description = meta.get("description", None)
-        self.classification = meta.get(
-            "classification", meta.get("sharing", Classification.UNRESTRICTED)
-        )
+        self.classification = meta.get("classification", meta.get("sharing", Classification.UNRESTRICTED))
         self.source = meta.get("source", meta.get("organisation", None))
         self.summary = meta.get("summary", meta.get("behavior", None))
         self.author = meta.get("author", meta.get("poc", None))
         self.status = meta.get("status", None)  # Status assigned by the rule creator
         self.al_status = meta.get(self.status, meta.get("al_status", "DEPLOYED"))
-        self.actor_type = meta.get(
-            "actor_type", meta.get("ta_type", meta.get("family", None))
-        )
+        self.actor_type = meta.get("actor_type", meta.get("ta_type", meta.get("family", None)))
         self.mitre_att = meta.get("mitre_att", meta.get("attack_id", None))
         self.actor = meta.get(
             "used_by",
@@ -399,9 +372,7 @@ class YaraMetadata:
         # Parse and populate tag list
         self.tags = []
         if self.al_tag:
-            tags = (
-                self.al_tag.split(",") if isinstance(self.al_tag, str) else self.al_tag
-            )
+            tags = self.al_tag.split(",") if isinstance(self.al_tag, str) else self.al_tag
             for tag in tags:
                 tokens = tag.split(":", 1)
                 if len(tokens) == 2:
@@ -410,18 +381,12 @@ class YaraMetadata:
         # Parse and populate malware list
         self.malwares = []
         if self.malware:
-            malwares = (
-                self.malware.split(",")
-                if isinstance(self.malware, str)
-                else self.malware
-            )
+            malwares = self.malware.split(",") if isinstance(self.malware, str) else self.malware
             for malware in malwares:
                 tokens = malware.split(":")
                 malware_name = tokens[0]
                 malware_family = tokens[1] if (len(tokens) == 2) else ""
-                self.malwares.append(
-                    (malware_name.strip().upper(), malware_family.strip().upper())
-                )
+                self.malwares.append((malware_name.strip().upper(), malware_family.strip().upper()))
 
         # Parse and populate technique info
         self.techniques = []

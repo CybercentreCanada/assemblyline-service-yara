@@ -32,12 +32,15 @@ classification = forge.get_classification()
 
 
 def _compile_rules(rules_file, externals, logger: logging.Logger):
-    """
+    """YARA rule compilation and validation.
+
     Saves Yara rule content to file, validates the content with Yara Validator, and uses Yara python to compile
     the rule set.
 
     Args:
         rules_file: Yara rule file content.
+        externals: Dictionary of external variables for Yara compilation.
+        logger: Logger instance for logging validation messages.
 
     Returns:
         Compiled rules, compiled rules md5.
@@ -63,9 +66,7 @@ def guess_category(rule_file_name: str) -> str | None:
     return None
 
 
-def replace_include(
-    include, dirname, processed_files: set[str], cur_logger: logging.Logger
-):
+def replace_include(include, dirname, processed_files: set[str], cur_logger: logging.Logger):
     include_path = re.match(r"include [\'\"](.{4,})[\'\"]", include)
     if not include_path:
         return [], processed_files
@@ -81,12 +82,10 @@ def replace_include(
         with open(full_include_path, "r") as include_f:
             lines = include_f.readlines()
 
-        for i, line in enumerate(lines):
+        for line in lines:
             if line.startswith("include"):
                 new_dirname = os.path.dirname(full_include_path)
-                lines, processed_files = replace_include(
-                    line, new_dirname, processed_files, cur_logger
-                )
+                lines, processed_files = replace_include(line, new_dirname, processed_files, cur_logger)
                 temp_lines.extend(lines)
             else:
                 temp_lines.append(line)
@@ -112,9 +111,7 @@ class YaraUpdateServer(ServiceUpdater):
                     if source in path:
                         # We have at least one source we can pass to the service for now
                         # BUT let's make sure this source can be compiled with yara
-                        yara_validator.validate_rules(
-                            os.path.join(root, path), self.client
-                        )
+                        yara_validator.validate_rules(os.path.join(root, path), self.client)
                         remove_source = source
                         check_passed = True
                         break
@@ -144,9 +141,7 @@ class YaraUpdateServer(ServiceUpdater):
         combined_imports = []
         combined_rules = []
 
-        with tempfile.NamedTemporaryFile(
-            mode="a+", suffix=source_name
-        ) as compiled_file:
+        with tempfile.NamedTemporaryFile(mode="a+", suffix=source_name) as compiled_file:
             # Aggregate files into one major source file
             for file, _ in files_sha256:
                 # File has already been processed before, skip it to avoid duplication of rules
@@ -161,11 +156,9 @@ class YaraUpdateServer(ServiceUpdater):
                     f_lines = f.readlines()
 
                 temp_lines: list[str] = []
-                for _, f_line in enumerate(f_lines):
+                for f_line in f_lines:
                     if f_line.startswith("include"):
-                        lines, processed_files = replace_include(
-                            f_line, file_dirname, processed_files, self.log
-                        )
+                        lines, processed_files = replace_include(f_line, file_dirname, processed_files, self.log)
                         temp_lines.extend(lines)
                     else:
                         temp_lines.append(f_line)
@@ -180,12 +173,8 @@ class YaraUpdateServer(ServiceUpdater):
                     if guessed_category:
                         for rule in document.ast.rules:
                             if not any(meta.key == "category" for meta in rule.meta):
-                                rule.meta.append(
-                                    MetaEntry(key="category", value=guessed_category)
-                                )
-                                rule.meta.append(
-                                    MetaEntry(key=guessed_category, value=rule.name)
-                                )
+                                rule.meta.append(MetaEntry(key="category", value=guessed_category))
+                                rule.meta.append(MetaEntry(key=guessed_category, value=rule.name))
 
                     # Save all rules from source into single file
                     compiled_file.write(yaraast.generate(document))
@@ -194,9 +183,7 @@ class YaraUpdateServer(ServiceUpdater):
                 except Exception as e:  # noqa: BLE001
                     self.log.error(f"Problem parsing {file}: {e}")
                     continue
-            yara_importer = YaraImporter(
-                self.updater_type, self.client, logger=self.log
-            )
+            yara_importer = YaraImporter(self.updater_type, self.client, logger=self.log)
             compiled_file.seek(0)
             changed = _compile_rules(compiled_file.name, self.externals, self.log)
             if changed:
@@ -235,9 +222,7 @@ class YaraUpdateServer(ServiceUpdater):
             )
         }
 
-        with open(
-            os.path.join(new_directory, SIGNATURES_META_FILENAME), "w"
-        ) as meta_file:
+        with open(os.path.join(new_directory, SIGNATURES_META_FILENAME), "w") as meta_file:
             meta_file.write(json.dumps(signature_map, indent=2))
 
         try:
@@ -262,9 +247,7 @@ class YaraUpdateServer(ServiceUpdater):
 
             os.rename(temp_status.name, STATUS_FILE)
 
-            self.log.info(
-                f"Now serving: {self._update_dir} and {self._update_tar} ({self.get_local_update_time()})"
-            )
+            self.log.info(f"Now serving: {self._update_dir} and {self._update_tar} ({self.get_local_update_time()})")
         finally:
             if new_tar and os.path.exists(new_tar):
                 self.log.info(f"Remove old tar file: {new_tar}")
@@ -282,13 +265,8 @@ class YaraUpdateServer(ServiceUpdater):
                 file_path = os.path.join(UPDATER_DIR, file)
                 if (
                     (file.startswith("signatures_") and file_path != self._update_tar)
-                    or (
-                        file.startswith("time_keeper_")
-                        and file_path != self._time_keeper
-                    )
-                    or (
-                        file.startswith("update_dir_") and file_path != self._update_dir
-                    )
+                    or (file.startswith("time_keeper_") and file_path != self._time_keeper)
+                    or (file.startswith("update_dir_") and file_path != self._update_dir)
                 ):
                     try:
                         # Attempt to cleanup file from directory

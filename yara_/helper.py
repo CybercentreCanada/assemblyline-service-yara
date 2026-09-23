@@ -3,10 +3,13 @@ import os
 import re
 
 import yara_x
+import yaraast
 from assemblyline.common import forge
 from assemblyline.odm.models.signature import Signature
 from assemblyline_v4_service.updater.client import UpdaterClient
-from plyara import Plyara, utils
+from yaraast.api import ParsedDocument
+from yaraast.ast.base import YaraFile
+from yaraast.codegen import CodeGenerator
 
 DEFAULT_STATUS = "DEPLOYED"
 Classification = forge.get_classification()
@@ -18,7 +21,7 @@ def externals_to_dict(externals: list[str]) -> dict[str, str | int]:
     return {f'al_{x.replace(".", "_")}': "" if x not in int_fields else 0 for x in externals}
 
 
-class YaraImporter(object):
+class YaraImporter:
     def __init__(self, importer_type: str, al_client: UpdaterClient, logger=None):
         if not logger:
             from assemblyline.common import log as al_log
@@ -29,52 +32,47 @@ class YaraImporter(object):
 
         self.importer_type: str = importer_type
         self.update_client: UpdaterClient = al_client
-        self.parser = Plyara()
-        self.parser.STRING_ESCAPE_CHARS.add("r")
         self.classification = forge.get_classification()
         self.log = logger
 
-    def _save_signatures(self, signatures, source, default_status=DEFAULT_STATUS, default_classification=None):
-        if len(signatures) == 0:
+    def _save_signatures(self, document, source, default_status=DEFAULT_STATUS, default_classification=None):
+        if len(document.ast.rules) == 0:
             self.log.info(f"There are no signatures for {source}, skipping...")
             return False
 
         order = 1
         upload_list = []
-        for signature in signatures:
+        generator = CodeGenerator()
+        import_document = ParsedDocument(ast=YaraFile(imports=document.ast.imports), dialect="yara")
+        import_source = yaraast.generate(import_document).rstrip()
+        for signature in document.ast.rules:
             classification = default_classification or self.classification.UNRESTRICTED
             signature_id = None
             version = 1
             status = default_status
 
             signature_ids = {}
-            for meta in signature.get("metadata", {}):
-                for k, v in meta.items():
-                    if k in ["classification", "sharing"]:
-                        classification = v
-                    elif k in ["id", "rule_id", "signature_id"]:
-                        signature_ids[k] = v
-                    elif k in ["version", "rule_version", "revision"]:
-                        if isinstance(
-                            v,
-                            (
-                                int,
-                                bool,
-                            ),
-                        ):
-                            # Handle integer or boolean revisions
-                            version = str(v)
-                        elif "." in v:
-                            # Maintain version schema (M.m)
-                            version_split = v.split(".", 1)
-                            major = "".join(filter(str.isdigit, version_split[0]))
-                            minor = "".join(filter(str.isdigit, version_split[1]))
-                            version = f"{major}.{minor}"
-                        else:
-                            # Fair to assume number found is the major only
-                            version = "".join(filter(str.isdigit, v))
-                    elif k in ["status", "al_status"]:
-                        status = v
+            for meta in signature.meta:
+                key, value = meta.key, meta.value
+                if key in ["classification", "sharing"]:
+                    classification = value
+                elif key in ["id", "rule_id", "signature_id"]:
+                    signature_ids[key] = value
+                elif key in ["version", "rule_version", "revision"]:
+                    if isinstance(value, (int, bool)):
+                        # Handle integer or boolean revisions
+                        version = str(value)
+                    elif "." in str(value):
+                        # Maintain version schema (M.m)
+                        version_split = str(value).split(".", 1)
+                        major = "".join(filter(str.isdigit, version_split[0]))
+                        minor = "".join(filter(str.isdigit, version_split[1]))
+                        version = f"{major}.{minor}"
+                    else:
+                        # Fair to assume number found is the major only
+                        version = "".join(filter(str.isdigit, str(value)))
+                elif key in ["status", "al_status"]:
+                    status = value
 
             if not version:
                 # If there is a null value for a version, then default to original value
@@ -82,7 +80,7 @@ class YaraImporter(object):
 
             # Set signature_id based on expected precedence: id > rule_id > signature_id
             signature_id = signature_ids.get("id", signature_ids.get("rule_id", signature_ids.get("signature_id"))) or \
-            signature.get('rule_name')
+            signature.name
 
             # Convert CCCS YARA status to AL signature status
             if status == "RELEASED":
@@ -96,25 +94,24 @@ class YaraImporter(object):
             if status not in ["DEPLOYED", "NOISY", "DISABLED"]:
                 status = default_status
 
-            # Fix imports and remove cuckoo
-            signature["imports"] = utils.detect_imports(signature)
-            if "cuckoo" not in signature["imports"]:
-                sig = Signature(
-                    dict(
-                        classification=classification,
-                        data=utils.rebuild_yara_rule(signature),
-                        name=signature.get("rule_name"),
-                        order=order,
-                        revision=int(float(version)),
-                        signature_id=signature_id,
-                        source=source,
-                        status=status,
-                        type=self.importer_type,
-                    )
+            rule_source = generator.generate(signature)
+            if import_source:
+                rule_source = f"{import_source}\n\n{rule_source}"
+
+            sig = Signature(
+                dict(
+                    classification=classification,
+                    data=rule_source,
+                    name=signature.name,
+                    order=order,
+                    revision=int(float(version)),
+                    signature_id=signature_id,
+                    source=source,
+                    status=status,
+                    type=self.importer_type,
                 )
-                upload_list.append(sig.as_primitives())
-            else:
-                self.log.warning(f"Signature '{signature.get('rule_name')}' skipped because it uses cuckoo module.")
+            )
+            upload_list.append(sig.as_primitives())
 
             order += 1
 
@@ -124,9 +121,7 @@ class YaraImporter(object):
         return r["success"]
 
     def _split_signatures(self, data):
-        self.parser = Plyara()
-        self.parser.STRING_ESCAPE_CHARS.add("r")
-        return self.parser.parse_string(data)
+        return yaraast.parse(data, dialect="yara")
 
     def import_data(self, yara_bin, source, default_status=DEFAULT_STATUS, default_classification=None):
         return self._save_signatures(

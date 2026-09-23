@@ -28,6 +28,19 @@ def externals_to_dict(externals: list[str]) -> dict[str, str | int]:
     return {f"al_{x.replace('.', '_')}": "" if x not in int_fields else 0 for x in externals}
 
 
+def rule_import_source(all_imports, rule_source):
+    # Only include imports that are relevant to the current rule source.
+    rule_imports = [imp for imp in all_imports if getattr(imp, "module", None) and imp.module in rule_source]
+
+    # if there are no relevant imports, return an empty string
+    if not rule_imports:
+        return ""
+
+    # Otherwise, generate the import code for the relevant imports.
+    import_document = ParsedDocument(ast=YaraFile(imports=rule_imports), dialect="yara")
+    return yaraast.generate(import_document).rstrip()
+
+
 class YaraImporter:
     def __init__(self, importer_type: str, al_client: UpdaterClient, logger=None):
         if not logger:
@@ -56,8 +69,6 @@ class YaraImporter:
         order = 1
         upload_list = []
         generator = CodeGenerator()
-        import_document = ParsedDocument(ast=YaraFile(imports=document.ast.imports), dialect="yara")
-        import_source = yaraast.generate(import_document).rstrip()
         for signature in document.ast.rules:
             classification = default_classification or self.classification.UNRESTRICTED
             signature_id = None
@@ -113,6 +124,7 @@ class YaraImporter:
                 status = default_status
 
             rule_source = generator.generate(signature)
+            import_source = rule_import_source(document.ast.imports, rule_source)
             if import_source:
                 rule_source = f"{import_source}\n\n{rule_source}"
 

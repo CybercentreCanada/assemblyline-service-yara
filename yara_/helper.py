@@ -9,7 +9,6 @@ from assemblyline.odm.models.signature import Signature
 from assemblyline_v4_service.updater.client import UpdaterClient
 from yaraast.api import ParsedDocument
 from yaraast.ast.base import YaraFile
-from yaraast.codegen import CodeGenerator
 
 DEFAULT_STATUS = "DEPLOYED"
 Classification = forge.get_classification()
@@ -26,6 +25,42 @@ MITRE_ATT_DEFAULTS = {
 def externals_to_dict(externals: list[str]) -> dict[str, str | int]:
     int_fields = ["file_size"]
     return {f"al_{x.replace('.', '_')}": "" if x not in int_fields else 0 for x in externals}
+
+
+def condition_modules(node) -> set[str]:
+    """Extracts all module names used in the given YARA condition node.
+
+    Args:
+        node: The YARA condition node to analyze.
+
+    Returns:
+        A set of module names used in the condition.
+    """
+    # Initialize an empty set to store the modules found in the condition
+    modules = set()
+
+    # Define a recursive function to visit each node in the AST tree
+    def visit(node):
+        if isinstance(node, (list, tuple)):
+            for item in node:
+                visit(item)
+            return
+        if not hasattr(node, "__dict__"):
+            return
+
+        if hasattr(node, "module"):
+            modules.add(node.module)
+        if hasattr(node, "function"):
+            modules.add(node.function.split(".", 1)[0])
+
+        for value in vars(node).values():
+            visit(value)
+
+    # Start the recursive visit from the root node
+    visit(node)
+
+    # Return the set of modules found in the condition
+    return modules
 
 
 class YaraImporter:
@@ -55,10 +90,22 @@ class YaraImporter:
 
         order = 1
         upload_list = []
-        generator = CodeGenerator()
-        import_document = ParsedDocument(ast=YaraFile(imports=document.ast.imports), dialect="yara")
-        import_source = yaraast.generate(import_document).rstrip()
         for signature in document.ast.rules:
+            # Determine the modules referenced in the condition
+            referenced_modules = condition_modules(signature.condition)
+            rule_imports = set()
+            import_nodes = []
+            for imported in document.ast.imports:
+                import_key = (imported.module, imported.alias)
+                if (imported.alias or imported.module) in referenced_modules and import_key not in rule_imports:
+                    rule_imports.add(import_key)
+                    import_nodes.append(imported)
+
+            # Generate the source code for the rule with the relevant imports
+            rule_source = yaraast.generate(
+                ParsedDocument(ast=YaraFile(imports=import_nodes, rules=[signature]), dialect="yara")
+            ).rstrip()
+
             classification = default_classification or self.classification.UNRESTRICTED
             signature_id = None
             version = 1
@@ -111,10 +158,6 @@ class YaraImporter:
             # Fallback status
             if status not in ["DEPLOYED", "NOISY", "DISABLED"]:
                 status = default_status
-
-            rule_source = generator.generate(signature)
-            if import_source:
-                rule_source = f"{import_source}\n\n{rule_source}"
 
             sig = Signature(
                 {

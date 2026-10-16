@@ -8,8 +8,8 @@ import shutil
 import tarfile
 import tempfile
 import time
-from typing import Any, Optional
 
+import yaraast
 from assemblyline.common import forge
 from assemblyline_v4_service.updater.updater import (
     SIGNATURES_META_FILENAME,
@@ -17,33 +17,39 @@ from assemblyline_v4_service.updater.updater import (
     UPDATER_DIR,
     ServiceUpdater,
 )
-from plyara import Plyara, utils
+from yaraast.api import ParsedDocument
+from yaraast.ast.base import YaraFile
+from yaraast.ast.modifiers import MetaEntry
 
-from yara_.helper import YARA_EXTERNALS, YaraImporter, YaraValidator, externals_to_dict
+from yara_.helper import (
+    YARA_EXTERNALS,
+    YaraImporter,
+    YaraValidator,
+    externals_to_dict,
+)
 
 classification = forge.get_classification()
 
 
 def _compile_rules(rules_file, externals, logger: logging.Logger):
-    """
+    """YARA rule compilation and validation.
+
     Saves Yara rule content to file, validates the content with Yara Validator, and uses Yara python to compile
     the rule set.
 
     Args:
         rules_file: Yara rule file content.
+        externals: Dictionary of external variables for Yara compilation.
+        logger: Logger instance for logging validation messages.
 
     Returns:
         Compiled rules, compiled rules md5.
     """
-    try:
-        validate = YaraValidator(externals=externals, logger=logger)
-        validate.validate_rules(rules_file)
-    except Exception as e:
-        raise e
-    return True
+    validate = YaraValidator(externals=externals, logger=logger)
+    return validate.validate_rules(rules_file)
 
 
-def guess_category(rule_file_name: str) -> Optional[str]:
+def guess_category(rule_file_name: str) -> str | None:
     cat_map = {
         "technique": ["antidebug", "antivm", "capabilities"],
         "info": ["info", "deprecated", "crypto", "packer"],
@@ -76,7 +82,7 @@ def replace_include(include, dirname, processed_files: set[str], cur_logger: log
         with open(full_include_path, "r") as include_f:
             lines = include_f.readlines()
 
-        for i, line in enumerate(lines):
+        for line in lines:
             if line.startswith("include"):
                 new_dirname = os.path.dirname(full_include_path)
                 lines, processed_files = replace_include(line, new_dirname, processed_files, cur_logger)
@@ -124,9 +130,16 @@ class YaraUpdateServer(ServiceUpdater):
         return check_passed
 
     def import_update(
-        self, files_sha256, source_name: str, default_classification=classification.UNRESTRICTED, *args, **kwargs
+        self,
+        files_sha256,
+        source_name: str,
+        default_classification=classification.UNRESTRICTED,
+        *args,
+        **kwargs,
     ):
         processed_files: set[str] = set()
+        combined_imports = []
+        combined_rules = []
 
         with tempfile.NamedTemporaryFile(mode="a+", suffix=source_name) as compiled_file:
             # Aggregate files into one major source file
@@ -143,7 +156,7 @@ class YaraUpdateServer(ServiceUpdater):
                     f_lines = f.readlines()
 
                 temp_lines: list[str] = []
-                for _, f_line in enumerate(f_lines):
+                for f_line in f_lines:
                     if f_line.startswith("include"):
                         lines, processed_files = replace_include(f_line, file_dirname, processed_files, self.log)
                         temp_lines.extend(lines)
@@ -152,51 +165,47 @@ class YaraUpdateServer(ServiceUpdater):
 
                 # guess the type of files that we have in the current file
                 guessed_category = guess_category(file)
-                parser = Plyara()
-                parser.STRING_ESCAPE_CHARS.add("r")
                 # Try parsing the ruleset; on fail, move onto next set
                 try:
-                    signatures: list[dict[str, Any]] = parser.parse_string("\n".join(temp_lines))
-
-                    # Ignore "cuckoo" rules
-                    if "cuckoo" in parser.imports:
-                        parser.imports.remove("cuckoo")
+                    document = yaraast.parse("\n".join(temp_lines), dialect="yara")
 
                     # Guess category
                     if guessed_category:
-                        for s in signatures:
-                            s.setdefault("metadata", [])
-
-                            # Do not override category with guessed category if it already exists
-                            for meta in s["metadata"]:
-                                if "category" in meta:
-                                    continue
-
-                            s["metadata"].append({"category": guessed_category})
-                            s["metadata"].append({guessed_category: s.get("rule_name")})
+                        for rule in document.ast.rules:
+                            if not any(meta.key == "category" for meta in rule.meta):
+                                rule.meta.append(MetaEntry(key="category", value=guessed_category))
+                                rule.meta.append(MetaEntry(key=guessed_category, value=rule.name))
 
                     # Save all rules from source into single file
-                    for s in signatures:
-                        # Fix imports and remove cuckoo
-                        s["imports"] = utils.detect_imports(s)
-                        if "cuckoo" not in s["imports"]:
-                            compiled_file.write(utils.rebuild_yara_rule(s))
-                except Exception as e:
+                    compiled_file.write(yaraast.generate(document))
+                    combined_imports.extend(document.ast.imports)
+                    combined_rules.extend(document.ast.rules)
+                except Exception as e:  # noqa: BLE001
                     self.log.error(f"Problem parsing {file}: {e}")
                     continue
             yara_importer = YaraImporter(self.updater_type, self.client, logger=self.log)
-            try:
-                compiled_file.seek(0)
-                _compile_rules(compiled_file.name, self.externals, self.log)
+            compiled_file.seek(0)
+            changed = _compile_rules(compiled_file.name, self.externals, self.log)
+            if changed:
                 yara_importer.import_file(
-                    compiled_file.name, source_name, default_classification=default_classification
+                    compiled_file.name,
+                    source_name,
+                    default_classification=default_classification,
                 )
-            except Exception as e:
-                raise e
+            else:
+                document = ParsedDocument(
+                    ast=YaraFile(imports=combined_imports, rules=combined_rules),
+                    dialect="yara",
+                )
+                yara_importer._save_signatures(
+                    document,
+                    source_name,
+                    default_classification=default_classification,
+                )
 
     def serve_directory(self, new_directory: str, new_time: str):
         self.log.info("Update finished with new data.")
-        new_tar = ''
+        new_tar = ""
 
         # Before serving directory, let's maintain a map of the different signatures and their current deployment state
         # This map allows the service to be more responsive to changes made locally to the system such as
@@ -206,23 +215,26 @@ class YaraUpdateServer(ServiceUpdater):
         # Pull signature metadata from the API
         signature_map = {
             f"{item['source']}.{item['signature_id']}": item
-            for item in self.datastore.signature.stream_search(query=self.signatures_query,
-                                                                fl="classification,source,status,signature_id,name",
-                                                                as_obj=False)
+            for item in self.datastore.signature.stream_search(
+                query=self.signatures_query,
+                fl="classification,source,status,signature_id,name",
+                as_obj=False,
+            )
         }
 
-        with open(os.path.join(new_directory, SIGNATURES_META_FILENAME), 'w') as meta_file:
+        with open(os.path.join(new_directory, SIGNATURES_META_FILENAME), "w") as meta_file:
             meta_file.write(json.dumps(signature_map, indent=2))
 
         try:
             # Tar update directory
-            new_tar = tempfile.NamedTemporaryFile(prefix="signatures_", dir=UPDATER_DIR, suffix='.tar.bz2',
-                                                  delete=False)
-            new_tar.close()
-            new_tar = new_tar.name
-            tar_handle = tarfile.open(new_tar, 'w:bz2')
-            tar_handle.add(new_directory, '/')
-            tar_handle.close()
+            with tempfile.NamedTemporaryFile(
+                prefix="signatures_", dir=UPDATER_DIR, suffix=".tar.bz2", delete=False
+            ) as tmp_tar:
+                new_tar = tmp_tar.name
+
+            # Open the newly created tar file for writing with bzip2 compression
+            with tarfile.open(new_tar, "w:bz2") as tar_handle:
+                tar_handle.add(new_directory, "/")
 
             # swap update directory with old one
             self._update_dir, new_directory = new_directory, self._update_dir
@@ -230,8 +242,9 @@ class YaraUpdateServer(ServiceUpdater):
             self._time_keeper, new_time = new_time, self._time_keeper
 
             # Write the new status file
-            temp_status = tempfile.NamedTemporaryFile('w+', delete=False, dir='/tmp')
-            json.dump(self.status(), temp_status.file)
+            with tempfile.NamedTemporaryFile("w+", delete=False) as temp_status:
+                json.dump(self.status(), temp_status)
+
             os.rename(temp_status.name, STATUS_FILE)
 
             self.log.info(f"Now serving: {self._update_dir} and {self._update_tar} ({self.get_local_update_time()})")
@@ -250,9 +263,11 @@ class YaraUpdateServer(ServiceUpdater):
             # Cleanup old timekeepers/tars from unexpected termination(s) on persistent storage
             for file in os.listdir(UPDATER_DIR):
                 file_path = os.path.join(UPDATER_DIR, file)
-                if (file.startswith('signatures_') and file_path != self._update_tar) or \
-                    (file.startswith('time_keeper_') and file_path != self._time_keeper) or \
-                        (file.startswith('update_dir_') and file_path != self._update_dir):
+                if (
+                    (file.startswith("signatures_") and file_path != self._update_tar)
+                    or (file.startswith("time_keeper_") and file_path != self._time_keeper)
+                    or (file.startswith("update_dir_") and file_path != self._update_dir)
+                ):
                     try:
                         # Attempt to cleanup file from directory
                         os.unlink(file_path)
@@ -262,6 +277,7 @@ class YaraUpdateServer(ServiceUpdater):
                     except FileNotFoundError:
                         # File has already been removed
                         pass
+
 
 if __name__ == "__main__":
     with YaraUpdateServer() as server:

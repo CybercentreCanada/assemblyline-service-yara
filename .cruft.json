@@ -1,13 +1,13 @@
 {
   "template": "https://github.com/CybercentreCanada/assemblyline-service-template.git",
-  "commit": "fe8035cde942a2c013295a32f8accaa473dd836d",
+  "commit": "082ca0fe29887851cad1b54ddfbf37163b45a9cb",
   "checkout": null,
   "context": {
     "cookiecutter": {
       "service_name": "yara",
       "__svc_name": "yara",
       "__repository": "assemblyline-service-yara",
-      "__pkg_name": "yara_",
+      "__pkg_name": "yara",
       "class_name": "Yara",
       "short_description": "This Assemblyline service runs the YARA application against all file types.",
       "short_description_fr": "Ce service d'Assemblyline exécute l'application YARA pour tous les types de fichiers.",
@@ -16,8 +16,12 @@
       "org_name_full": "CybercentraCanada",
       "org_name_short": "cccs",
       "license": "mit",
+      "_extensions": [
+        "local_extensions.github_maintainer.Ext"
+      ],
       "_template": "https://github.com/CybercentreCanada/assemblyline-service-template.git",
-      "_commit": "fe8035cde942a2c013295a32f8accaa473dd836d"
+      "_commit": "082ca0fe29887851cad1b54ddfbf37163b45a9cb",
+      "_github_maintainer": "cccs-rs"
     }
   },
   "directory": null
